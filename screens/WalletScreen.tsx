@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   ChevronLeft,
   Wallet,
@@ -10,13 +11,16 @@ import {
   Lock,
   Loader2,
   Terminal,
+  CheckCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export const WalletScreen: React.FC = () => {
   const { setScreen, connectWallet } = useGame();
+  const { ready, authenticated, user, login } = usePrivy();
   const [isConnecting, setIsConnecting] = useState(false);
   const [terminalStep, setTerminalStep] = useState(0);
+  const [connectionComplete, setConnectionComplete] = useState(false);
 
   const logs = [
     "INITIALIZING SECURE PROTOCOL...",
@@ -25,8 +29,23 @@ export const WalletScreen: React.FC = () => {
     "AWAITING USER SIGNATURE...",
   ];
 
+  // Watch for successful authentication
   useEffect(() => {
-    if (isConnecting && terminalStep < logs.length) {
+    if (isConnecting && authenticated && user?.wallet?.address) {
+      // User authenticated via Privy, complete the flow
+      setTerminalStep(logs.length);
+      setTimeout(() => {
+        connectWallet(user.wallet!.address);
+        setConnectionComplete(true);
+        setTimeout(() => {
+          setScreen(ScreenName.REWARDS);
+        }, 1000);
+      }, 500);
+    }
+  }, [authenticated, user?.wallet?.address, isConnecting]);
+
+  useEffect(() => {
+    if (isConnecting && terminalStep < logs.length - 1) {
       const timer = setTimeout(() => {
         setTerminalStep((s) => s + 1);
       }, 600);
@@ -34,13 +53,14 @@ export const WalletScreen: React.FC = () => {
     }
   }, [isConnecting, terminalStep]);
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     setIsConnecting(true);
-    // Simulate network delay and terminal sequence
+    setTerminalStep(0);
+    
+    // Wait for terminal animation then trigger Privy login
     setTimeout(() => {
-      connectWallet("0x71C...9A23");
-      setScreen(ScreenName.REWARDS);
-    }, 3000);
+      login();
+    }, 2000);
   };
 
   return (
@@ -56,7 +76,7 @@ export const WalletScreen: React.FC = () => {
       <motion.button
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
-        onClick={() => setScreen(ScreenName.MATCH_RESULT)}
+        onClick={() => setScreen(ScreenName.HOME)}
         className="absolute top-8 left-8 p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all z-20"
       >
         <ChevronLeft className="w-5 h-5 text-slate-400" />
@@ -117,10 +137,11 @@ export const WalletScreen: React.FC = () => {
                   fullWidth
                   size="lg"
                   onClick={handleConnect}
-                  className="h-16 shadow-blue-500/20 group overflow-hidden"
+                  disabled={!ready}
+                  className="h-16 shadow-blue-500/20 group overflow-hidden disabled:opacity-50"
                 >
                   <span className="relative z-10 flex items-center justify-center gap-3">
-                    INITIALIZE LINK <Lock className="w-5 h-5" />
+                    {!ready ? "LOADING..." : "INITIALIZE LINK"} <Lock className="w-5 h-5" />
                   </span>
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                 </Button>
@@ -150,7 +171,7 @@ export const WalletScreen: React.FC = () => {
               </div>
 
               <div className="space-y-4 mb-10 font-mono">
-                {logs.slice(0, terminalStep).map((log, i) => (
+                {logs.slice(0, terminalStep + 1).map((log, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, x: -10 }}
@@ -159,27 +180,38 @@ export const WalletScreen: React.FC = () => {
                   >
                     <span className="text-blue-500/50">[{i + 1}]</span>
                     <span className="text-slate-300 font-bold">{log}</span>
+                    {i < terminalStep && <CheckCircle className="w-3 h-3 text-green-500" />}
                   </motion.div>
                 ))}
-                {terminalStep < logs.length && (
+                {!connectionComplete && terminalStep < logs.length && (
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
                     <span className="w-2 h-4 bg-blue-500 animate-pulse" />
                   </div>
                 )}
+                {connectionComplete && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-center gap-3 text-[10px] text-green-400 font-bold"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    CONNECTION ESTABLISHED - {user?.wallet?.address?.slice(0, 8)}...
+                  </motion.div>
+                )}
               </div>
 
               <div className="flex flex-col items-center">
-                <div className="w-16 h-1 w-full bg-slate-900 rounded-full overflow-hidden">
+                <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 3, ease: "linear" }}
-                    className="h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.8)]"
+                    animate={{ width: connectionComplete ? "100%" : `${(terminalStep / logs.length) * 80}%` }}
+                    transition={{ duration: 0.5 }}
+                    className={`h-full ${connectionComplete ? "bg-green-500" : "bg-blue-500"} shadow-[0_0_15px_rgba(59,130,246,0.8)]`}
                   />
                 </div>
                 <span className="text-[9px] text-slate-500 font-black mt-4 uppercase tracking-[0.2em]">
-                  Encryption active
+                  {connectionComplete ? "Link established" : "Encryption active"}
                 </span>
               </div>
             </motion.div>

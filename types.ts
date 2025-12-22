@@ -43,9 +43,10 @@ export interface Team {
 export interface MatchStats {
   homeScore: number;
   awayScore: number;
-  possession: number; // Percentage
+  possession: number;
   outcome: "WIN" | "LOSS" | "DRAW";
   xpEarned: number;
+  timestamp?: number;
 }
 
 export interface GameState {
@@ -58,5 +59,7 @@ export interface GameState {
   matchStats: MatchStats | null;
   matchDuration: number;
   xp: number;
+  coins: number;
   inventory: Player[];
+  matchHistory: MatchStats[];
 }

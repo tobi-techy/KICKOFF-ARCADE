@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Activity,
   Cpu,
+  Wallet,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -60,12 +61,20 @@ export const HomeScreen: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10">
+          <div className="hidden sm:flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10">
             <Globe className="w-3 h-3 text-blue-400 animate-spin-slow" />
             <span className="text-[9px] font-black text-white/80 uppercase tracking-widest">
               Movement Testnet
             </span>
           </div>
+          {/*{walletAddress && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/30 rounded-full">
+              <Wallet className="w-3 h-3 text-emerald-400" />
+              <span className="text-[10px] font-bold text-emerald-400">
+                {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              </span>
+            </div>
+          )}*/}
         </div>
       </motion.div>
 

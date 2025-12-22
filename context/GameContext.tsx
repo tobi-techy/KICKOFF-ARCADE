@@ -25,6 +25,8 @@ interface GameContextType extends GameState {
     source1: "squad" | "bench",
     source2: "squad" | "bench",
   ) => void;
+  addXP: (amount: number) => void;
+  addCoins: (amount: number) => void;
 }
 
 const initialState: GameState = {
@@ -37,7 +39,9 @@ const initialState: GameState = {
   matchStats: null,
   matchDuration: 600,
   xp: 0,
+  coins: 0,
   inventory: [],
+  matchHistory: [],
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -100,7 +104,7 @@ export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
     setState((prev) => ({
       ...prev,
       walletAddress: address,
-      inventory: [...prev.inventory, ...DEMO_PLAYERS], // Mock inventory sync
+      inventory: [...prev.inventory, ...DEMO_PLAYERS],
     }));
   };
 
@@ -109,12 +113,23 @@ export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
   };
 
   const finishMatch = (stats: MatchStats) => {
+    const coinsEarned = stats.outcome === "WIN" ? 50 : stats.outcome === "DRAW" ? 20 : 10;
     setState((prev) => ({
       ...prev,
       matchStats: stats,
       xp: prev.xp + stats.xpEarned,
+      coins: prev.coins + coinsEarned,
+      matchHistory: [...prev.matchHistory, { ...stats, timestamp: Date.now() }],
       currentScreen: ScreenName.MATCH_RESULT,
     }));
+  };
+
+  const addXP = (amount: number) => {
+    setState((prev) => ({ ...prev, xp: prev.xp + amount }));
+  };
+
+  const addCoins = (amount: number) => {
+    setState((prev) => ({ ...prev, coins: prev.coins + amount }));
   };
 
   return (
@@ -131,6 +146,8 @@ export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
         finishMatch,
         autoFillSquad,
         swapPlayers,
+        addXP,
+        addCoins,
       }}
     >
       {children}
