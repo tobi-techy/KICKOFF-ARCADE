@@ -32,6 +32,8 @@ export class GamePhysics {
   onCollision?: (type: "kick" | "bounce" | "tackle") => void;
   onFoul?: (foulingPlayer: string) => void;
   onOutOfBounds?: (type: "throw-in" | "corner" | "goal-kick", team: "home" | "away", x: number, y: number) => void;
+  
+  private outOfBoundsCooldown = 0;
 
   constructor() {
     this.world = new planck.World({ gravity: planck.Vec2(0, 0) });
@@ -185,38 +187,33 @@ export class GamePhysics {
     const playerPos = playerBody.getPosition();
     const speed = Math.sqrt(playerVx * playerVx + playerVy * playerVy);
 
+    // Ball position relative to player
+    const aheadDist = (PLAYER_RADIUS + BALL_RADIUS + 0.5) / SCALE;
+    let targetX: number, targetY: number;
+
     if (speed > 0.1) {
       // Ball slightly ahead of player in movement direction
       const angle = Math.atan2(playerVy, playerVx);
-      const aheadDist = (PLAYER_RADIUS + BALL_RADIUS + 1) / SCALE;
-
-      // Add wobble for realism
-      const wobble = (Math.random() - 0.5) * 0.02;
-      const rawTargetX = playerPos.x + Math.cos(angle + wobble) * aheadDist;
-      const rawTargetY = playerPos.y + Math.sin(angle + wobble) * aheadDist;
-
-      // Clamp target within field boundaries to prevent sticking in corners
-      // Add margin to keep ball slightly off walls (4 units / SCALE)
-      const margin = 4 / SCALE;
-      const targetX = Math.max(margin, Math.min((FIELD_WIDTH / SCALE) - margin, rawTargetX));
-      const targetY = Math.max(margin, Math.min((FIELD_HEIGHT / SCALE) - margin, rawTargetY));
-
-      // Move ball towards target position (sticky dribble)
-      const ballPos = this.ball.getPosition();
-      const dx = targetX - ballPos.x;
-      const dy = targetY - ballPos.y;
-
-      // Ball follows at 90% of player speed
-      this.ball.setLinearVelocity(planck.Vec2(
-        playerVx * 0.9 + dx * 8,
-        playerVy * 0.9 + dy * 8
-      ));
+      targetX = playerPos.x + Math.cos(angle) * aheadDist;
+      targetY = playerPos.y + Math.sin(angle) * aheadDist;
     } else {
-      // Standing still - ball stays close
-      const ballVel = this.ball.getLinearVelocity();
-      this.ball.setLinearVelocity(planck.Vec2(ballVel.x * 0.9, ballVel.y * 0.9));
+      // Standing still - ball at player's feet (slightly in front based on team)
+      const facing = playerId.startsWith("h") ? 1 : -1;
+      targetX = playerPos.x + facing * aheadDist * 0.8;
+      targetY = playerPos.y;
     }
 
+    // Clamp within field
+    const margin = 4 / SCALE;
+    targetX = Math.max(margin, Math.min((FIELD_WIDTH / SCALE) - margin, targetX));
+    targetY = Math.max(margin, Math.min((FIELD_HEIGHT / SCALE) - margin, targetY));
+
+    // Snap ball to target position (very sticky)
+    const ballPos = this.ball.getPosition();
+    const dx = targetX - ballPos.x;
+    const dy = targetY - ballPos.y;
+
+    this.ball.setLinearVelocity(planck.Vec2(dx * 15, dy * 15));
     this.ballOwner = playerId;
     this.lastBallOwner = playerId;
   }
@@ -386,6 +383,7 @@ export class GamePhysics {
     this.ball.setLinearVelocity(planck.Vec2(0, 0));
     this.ball.setAngularVelocity(0);
     this.ballOwner = null;
+    this.outOfBoundsCooldown = 60; // Prevent immediate re-trigger
   }
 
   resetPlayer(id: string, x: number, y: number): void {
@@ -421,29 +419,45 @@ export class GamePhysics {
     const ballX = ballPos.x * SCALE;
     const ballY = ballPos.y * SCALE;
 
-    // Check for out of bounds (ball touching walls)
-    const margin = 3;
+    // Decrement cooldown
+    if (this.outOfBoundsCooldown > 0) this.outOfBoundsCooldown--;
+
+    // Check for out of bounds (ball touching walls) - with cooldown to prevent spam
+    const margin = 4;
     const goalWidth = FIELD_HEIGHT * 0.3;
     const goalTop = (FIELD_HEIGHT - goalWidth) / 2;
     const goalBottom = goalTop + goalWidth;
-    const lastTouchTeam = this.lastBallOwner ? 
-      (this.players.get(this.lastBallOwner)?.getFixtureList()?.getUserData() as any)?.team : null;
+    
+    if (this.outOfBoundsCooldown === 0) {
+      const lastTouchTeam = this.lastBallOwner ? 
+        (this.players.get(this.lastBallOwner)?.getFixtureList()?.getUserData() as any)?.team : null;
+      
+      const nearTop = ballY <= margin;
+      const nearBottom = ballY >= FIELD_HEIGHT - margin;
+      const nearLeft = ballX <= margin;
+      const nearRight = ballX >= FIELD_WIDTH - margin;
+      const inGoalArea = ballY >= goalTop && ballY <= goalBottom;
 
-    // Top/bottom walls = throw-in
-    if (ballY <= margin || ballY >= FIELD_HEIGHT - margin) {
-      const throwTeam = lastTouchTeam === "home" ? "away" : "home";
-      this.onOutOfBounds?.("throw-in", throwTeam, ballX, ballY <= margin ? 2 : FIELD_HEIGHT - 2);
-    }
-    // Left/right walls (outside goal area) = corner or goal-kick
-    else if (ballX <= margin && (ballY < goalTop || ballY > goalBottom)) {
-      const isCorner = lastTouchTeam === "home";
-      this.onOutOfBounds?.(isCorner ? "corner" : "goal-kick", isCorner ? "away" : "home", 
-        isCorner ? 2 : 15, ballY < goalTop ? 2 : FIELD_HEIGHT - 2);
-    }
-    else if (ballX >= FIELD_WIDTH - margin && (ballY < goalTop || ballY > goalBottom)) {
-      const isCorner = lastTouchTeam === "away";
-      this.onOutOfBounds?.(isCorner ? "corner" : "goal-kick", isCorner ? "home" : "away",
-        isCorner ? FIELD_WIDTH - 2 : FIELD_WIDTH - 15, ballY < goalTop ? 2 : FIELD_HEIGHT - 2);
+      if (nearTop || nearBottom || ((nearLeft || nearRight) && !inGoalArea)) {
+        this.outOfBoundsCooldown = 120; // ~2 seconds at 60fps
+        
+        // Determine type and position
+        if ((nearTop || nearBottom) && !nearLeft && !nearRight) {
+          // Pure sideline = throw-in
+          const throwTeam = lastTouchTeam === "home" ? "away" : "home";
+          this.onOutOfBounds?.("throw-in", throwTeam, Math.max(10, Math.min(FIELD_WIDTH - 10, ballX)), nearTop ? 8 : FIELD_HEIGHT - 8);
+        } else if (nearLeft && !inGoalArea) {
+          // Left side corner/goal-kick
+          const isCorner = lastTouchTeam === "home";
+          this.onOutOfBounds?.(isCorner ? "corner" : "goal-kick", isCorner ? "away" : "home",
+            isCorner ? 5 : 20, nearTop ? 8 : FIELD_HEIGHT - 8);
+        } else if (nearRight && !inGoalArea) {
+          // Right side corner/goal-kick
+          const isCorner = lastTouchTeam === "away";
+          this.onOutOfBounds?.(isCorner ? "corner" : "goal-kick", isCorner ? "home" : "away",
+            isCorner ? FIELD_WIDTH - 5 : FIELD_WIDTH - 20, nearTop ? 8 : FIELD_HEIGHT - 8);
+        }
+      }
     }
 
     let closestPlayer: string | null = null;
@@ -458,12 +472,16 @@ export class GamePhysics {
       }
     });
 
-    if (closestPlayer && !this.ballOwner) {
-      this.ballOwner = closestPlayer;
-    } else if (!closestPlayer || closestDist > (PLAYER_RADIUS + BALL_RADIUS + 2) / SCALE) {
-      if (this.ballOwner) this.lastBallOwner = this.ballOwner;
-      this.ballOwner = null;
+    // Ball sticks to player - only changes owner on contact with new player
+    // Ball is released only via kick(), not by distance
+    if (closestPlayer) {
+      // New player touched the ball - they take possession
+      if (!this.ballOwner || closestPlayer !== this.ballOwner) {
+        if (this.ballOwner) this.lastBallOwner = this.ballOwner;
+        this.ballOwner = closestPlayer;
+      }
     }
+    // Don't clear ballOwner based on distance - only kick() clears it
   }
 
   destroy(): void {

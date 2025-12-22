@@ -6,57 +6,13 @@ import { Joystick } from "../components/Joystick";
 import { PixelPlayer } from "../components/PixelPlayer";
 import { sounds } from "../utils/sounds";
 import { GamePhysics, KickOptions } from "../utils/physics";
-import {
-  Timer,
-  Trophy,
-  Users,
-  Zap,
-  Pause,
-  Play,
-  RefreshCw,
-  LogOut,
-  Target,
-} from "lucide-react";
+import { computeAIMove, resetAIStates, AIPlayer } from "../utils/ai";
+import { Timer, Pause, Play, RefreshCw, LogOut, Users, Zap, Target, Trophy } from "lucide-react";
 
-// --- Game Engine Constants ---
+// --- Constants ---
 const FIELD_WIDTH = 200;
 const FIELD_HEIGHT = 120;
-const PLAYER_RADIUS = 3.5;
-const BALL_RADIUS = 2;
 const PLAYER_SPEED = 5;
-const AI_SPEED_FACTOR = 0.92;
-
-// Formation positions (4-3-3)
-const FORMATIONS = {
-  "4-3-3": {
-    home: [
-      { role: "gk", x: 0.08, y: 0.5 },
-      { role: "def", x: 0.22, y: 0.2 },
-      { role: "def", x: 0.22, y: 0.4 },
-      { role: "def", x: 0.22, y: 0.6 },
-      { role: "def", x: 0.22, y: 0.8 },
-      { role: "mid", x: 0.4, y: 0.25 },
-      { role: "mid", x: 0.4, y: 0.5 },
-      { role: "mid", x: 0.4, y: 0.75 },
-      { role: "att", x: 0.6, y: 0.2 },
-      { role: "att", x: 0.6, y: 0.5 },
-      { role: "att", x: 0.6, y: 0.8 },
-    ],
-    away: [
-      { role: "gk", x: 0.92, y: 0.5 },
-      { role: "def", x: 0.78, y: 0.2 },
-      { role: "def", x: 0.78, y: 0.4 },
-      { role: "def", x: 0.78, y: 0.6 },
-      { role: "def", x: 0.78, y: 0.8 },
-      { role: "mid", x: 0.6, y: 0.25 },
-      { role: "mid", x: 0.6, y: 0.5 },
-      { role: "mid", x: 0.6, y: 0.75 },
-      { role: "att", x: 0.4, y: 0.2 },
-      { role: "att", x: 0.4, y: 0.5 },
-      { role: "att", x: 0.4, y: 0.8 },
-    ],
-  },
-};
 
 interface GameObject {
   id: string;
@@ -67,7 +23,6 @@ interface GameObject {
   type: "player" | "ball";
   team?: "home" | "away";
   role?: "gk" | "def" | "mid" | "att";
-  rating?: number;
   speed?: number;
   shooting?: number;
   passing?: number;
@@ -75,8 +30,6 @@ interface GameObject {
   isUser?: boolean;
   color?: string;
   hasBall?: boolean;
-  targetX?: number;
-  targetY?: number;
   stamina?: number;
 }
 
@@ -92,6 +45,8 @@ export const MatchScreen: React.FC = () => {
     timeLeft: number;
     isPlaying: boolean;
     lastScored: "home" | "away" | null;
+    half: 1 | 2;
+    extraTime: number;
   }>({
     players: [],
     ball: {
@@ -103,9 +58,11 @@ export const MatchScreen: React.FC = () => {
       type: "ball",
     },
     score: { home: 0, away: 0 },
-    timeLeft: matchDuration,
+    timeLeft: matchDuration / 2,
     isPlaying: true,
     lastScored: null,
+    half: 1,
+    extraTime: 0,
   });
 
   const joystickRef = useRef({ x: 0, y: 0 });
@@ -126,19 +83,21 @@ export const MatchScreen: React.FC = () => {
   const uiRefs = useRef({
     activePlayerId: "h_att1",
     activeOpponentId: "",
-    timeLeft: matchDuration,
+    timeLeft: matchDuration / 2,
   });
 
   const [uiState, setUiState] = useState({
     homeScore: 0,
     awayScore: 0,
-    timeLeft: matchDuration,
+    timeLeft: matchDuration / 2,
     eventText: "",
     isPaused: false,
     activePlayerId: "h_att1",
     activeOpponentId: "",
     kickPower: 0,
     stamina: 100,
+    half: 1 as 1 | 2,
+    extraTime: 0,
   });
 
   const updateScale = useCallback(() => {
@@ -160,21 +119,26 @@ export const MatchScreen: React.FC = () => {
   const handleRestart = () => {
     const state = gameState.current;
     state.score = { home: 0, away: 0 };
-    state.timeLeft = matchDuration;
-    uiRefs.current.timeLeft = matchDuration;
+    state.timeLeft = matchDuration / 2;
+    state.half = 1;
+    state.extraTime = 0;
+    uiRefs.current.timeLeft = matchDuration / 2;
     uiRefs.current.activePlayerId = "h_att1";
     uiRefs.current.activeOpponentId = "";
     resetPositions(null);
+    resetAIStates();
     setUiState({
       homeScore: 0,
       awayScore: 0,
-      timeLeft: matchDuration,
+      timeLeft: matchDuration / 2,
       isPaused: false,
       eventText: "RESTART!",
       activePlayerId: "h_att1",
       activeOpponentId: "",
       kickPower: 0,
       stamina: 100,
+      half: 1,
+      extraTime: 0,
     });
     state.isPlaying = true;
     setTimeout(() => setUiState((prev) => ({ ...prev, eventText: "" })), 1000);
@@ -280,9 +244,26 @@ export const MatchScreen: React.FC = () => {
     setUiState((prev) => ({ ...prev, eventText: `${eventLabels[type]} - ${team.toUpperCase()}` }));
 
     setTimeout(() => {
-      physics.placeBall(x, y);
-      state.ball.x = x;
-      state.ball.y = y;
+      if (type === "goal-kick") {
+        // Give ball to goalkeeper
+        const gk = state.players.find(p => p.team === team && p.role === "gk");
+        if (gk) {
+          const gkX = team === "home" ? 20 : FIELD_WIDTH - 20;
+          physics.placeBall(gkX, FIELD_HEIGHT / 2);
+          state.ball.x = gkX;
+          state.ball.y = FIELD_HEIGHT / 2;
+          // Auto-kick the ball forward after a short delay
+          setTimeout(() => {
+            const kickAngle = team === "home" ? 0 : Math.PI;
+            physics.kick({ type: "pass", power: 0.8, targetAngle: kickAngle + (Math.random() - 0.5) * 0.5 });
+          }, 300);
+        }
+      } else {
+        // Throw-in or corner - place ball at position
+        physics.placeBall(x, y);
+        state.ball.x = x;
+        state.ball.y = y;
+      }
       state.ball.vx = 0;
       state.ball.vy = 0;
       setUiState((prev) => ({ ...prev, eventText: "" }));
@@ -310,6 +291,33 @@ export const MatchScreen: React.FC = () => {
       });
       setScreen(ScreenName.MATCH_RESULT);
     }, 2000);
+  };
+
+  const handleHalfTime = () => {
+    const state = gameState.current;
+    state.isPlaying = false;
+    sounds.whistle();
+    setUiState((prev) => ({ ...prev, eventText: "HALF TIME!" }));
+
+    setTimeout(() => {
+      state.half = 2;
+      state.timeLeft = matchDuration / 2;
+      state.extraTime = 0;
+      uiRefs.current.timeLeft = matchDuration / 2;
+      // Swap sides - reset positions with away team kicking off
+      resetPositions("home");
+      setUiState((prev) => ({ 
+        ...prev, 
+        eventText: "SECOND HALF",
+        timeLeft: matchDuration / 2,
+        half: 2,
+        extraTime: 0,
+      }));
+      setTimeout(() => {
+        setUiState((prev) => ({ ...prev, eventText: "" }));
+        state.isPlaying = true;
+      }, 1500);
+    }, 2500);
   };
 
   // Start charging a kick
@@ -417,217 +425,6 @@ export const MatchScreen: React.FC = () => {
     }
   };
 
-  // AI State Refs
-  const aiState = useRef<{ [playerId: string]: { tackleCooldown: number; decisionTimer: number; targetId?: string } }>({});
-
-  const moveAI = (
-    p: GameObject,
-    ball: GameObject,
-    allPlayers: GameObject[],
-    physics: GamePhysics,
-  ) => {
-    // Initialize AI state
-    if (!aiState.current[p.id]) {
-      aiState.current[p.id] = { tackleCooldown: 0, decisionTimer: 0 };
-    }
-    const ai = aiState.current[p.id];
-    if (ai.tackleCooldown > 0) ai.tackleCooldown--;
-
-    const distToBall = Math.sqrt((ball.x - p.x) ** 2 + (ball.y - p.y) ** 2);
-    const hasBall = physics.getBallOwner() === p.id;
-    let tx = p.x;
-    let ty = p.y;
-    let shouldSprint = false;
-
-    if (p.role === "gk") {
-      // Goalkeeper AI - diving saves
-      const goalX = p.team === "home" ? 8 : FIELD_WIDTH - 8;
-      tx = goalX;
-      
-      // Track ball Y position
-      const targetY = Math.max(FIELD_HEIGHT * 0.35, Math.min(FIELD_HEIGHT * 0.65, ball.y));
-      ty = targetY;
-
-      // Dive if ball is coming fast towards goal
-      const ballVelTowardsGoal = p.team === "home" ? -ball.vx : ball.vx;
-      if (ballVelTowardsGoal > 2 && distToBall < 25) {
-        tx = ball.x;
-        ty = ball.y;
-        shouldSprint = true;
-      }
-      
-      // Charge out if ball is very close
-      if (distToBall < 15 && Math.abs(ball.x - goalX) < 30) {
-        tx = ball.x;
-        ty = ball.y;
-        shouldSprint = true;
-      }
-    } else if (hasBall) {
-      // AI with ball - smart attacking
-      const goalX = p.team === "home" ? FIELD_WIDTH : 0;
-      const goalY = FIELD_HEIGHT / 2;
-      
-      // Check for nearby defenders
-      const nearbyDefenders = allPlayers.filter(
-        (other) => other.team !== p.team &&
-          Math.sqrt((other.x - p.x) ** 2 + (other.y - p.y) ** 2) < 25
-      );
-
-      if (nearbyDefenders.length > 0) {
-        // Look for pass
-        const teammates = allPlayers.filter(t => t.team === p.team && t.id !== p.id && t.role !== "gk");
-        const bestPass = teammates.reduce((best, t) => {
-          const dist = Math.sqrt((t.x - p.x) ** 2 + (t.y - p.y) ** 2);
-          const forwardBonus = p.team === "home" ? t.x - p.x : p.x - t.x;
-          // Check if pass lane is clear
-          const blocked = nearbyDefenders.some(d => {
-            const passAngle = Math.atan2(t.y - p.y, t.x - p.x);
-            const defAngle = Math.atan2(d.y - p.y, d.x - p.x);
-            return Math.abs(passAngle - defAngle) < 0.3 && 
-              Math.sqrt((d.x - p.x) ** 2 + (d.y - p.y) ** 2) < dist;
-          });
-          const score = blocked ? -100 : forwardBonus * 2 + (100 - dist) * 0.5;
-          return score > (best?.score || -Infinity) ? { player: t, score } : best;
-        }, null as { player: GameObject; score: number } | null);
-
-        if (bestPass && bestPass.score > 20 && Math.random() < 0.03) {
-          // One-two pass
-          const angle = Math.atan2(bestPass.player.y - p.y, bestPass.player.x - p.x);
-          physics.kick({ type: "pass", power: 0.5 + Math.random() * 0.3, targetAngle: angle });
-          sounds.pass();
-          return;
-        }
-      }
-
-      // Shooting range check
-      const distToGoal = Math.sqrt((goalX - p.x) ** 2 + (goalY - p.y) ** 2);
-      if (distToGoal < 50 && Math.random() < 0.04) {
-        const angle = Math.atan2(goalY - p.y + (Math.random() - 0.5) * 20, goalX - p.x);
-        physics.kick({ type: "shoot", power: 0.8 + Math.random() * 0.2, targetAngle: angle, spin: (Math.random() - 0.5) * 0.5 });
-        sounds.kick();
-        return;
-      }
-
-      // Dribble towards goal, avoiding defenders
-      tx = goalX;
-      ty = goalY;
-      if (nearbyDefenders.length > 0) {
-        const closest = nearbyDefenders[0];
-        // Move away from closest defender
-        ty = closest.y > p.y ? p.y - 20 : p.y + 20;
-      }
-      shouldSprint = distToGoal < 60;
-      
-    } else if (p.targetX !== undefined) {
-      // Chasing ball
-      tx = ball.x;
-      ty = ball.y;
-      shouldSprint = distToBall < 40;
-      
-      // DEFENSIVE LOGIC
-      if (p.team !== physics.getBallOwner()?.charAt(0)) {
-        // Opponent has ball
-        const ballOwnerId = physics.getBallOwner();
-        const ballOwner = allPlayers.find(pl => pl.id === ballOwnerId);
-
-        if (ballOwner) {
-            // Intercept path
-            const goalX = p.team === "home" ? 0 : FIELD_WIDTH;
-            // Lead the interception point slightly
-            tx = ball.x + (goalX - ball.x) * 0.2 + ball.vx * 0.5; 
-            ty = ball.y + ball.vy * 0.5;
-
-            // Attempt Tackle if close
-            if (ai.tackleCooldown === 0 && distToBall < 12) {
-                // Standing Tackle
-                if (distToBall < 6) {
-                    if (physics.standingTackle(p.id)) {
-                        ai.tackleCooldown = 60; // 1s cooldown
-                        sounds.kick(); // sound for successful tackle bump
-                    }
-                } 
-                // Slide Tackle (Only if behind or desperate)
-                else if (Math.random() < 0.05) { // Low probability per frame to avoid spam
-                    const angle = Math.atan2(ball.y - p.y, ball.x - p.x);
-                    const result = physics.slideTackle(p.id, angle);
-                    if (result.success || result.foul) {
-                        ai.tackleCooldown = 120; // 2s cooldown
-                        if (result.foul) {
-                            setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
-                            setTimeout(() => setUiState(prev => ({ ...prev, eventText: "" })), 1500);
-                        } else {
-                            sounds.kick();
-                        }
-                    }
-                }
-            }
-        }
-      }
-    } else {
-      // Off-ball positioning with formation awareness
-      const ballZone = ball.x / FIELD_WIDTH;
-      const isAttacking = (p.team === "home" && ballZone > 0.5) || (p.team === "away" && ballZone < 0.5);
-      
-      // Base position from formation
-      const formationShift = isAttacking ? 0.15 : -0.1;
-      
-      if (p.team === "home") {
-        if (p.role === "def") {
-          tx = 20 + ballZone * 35 + formationShift * FIELD_WIDTH;
-          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.25 : FIELD_HEIGHT * 0.75;
-        } else if (p.role === "mid") {
-          tx = 50 + ballZone * 50 + formationShift * FIELD_WIDTH;
-          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.3 : FIELD_HEIGHT * 0.7;
-          // Off-ball run
-          if (isAttacking && Math.random() < 0.01) {
-            tx += 30;
-          }
-        } else {
-          tx = 90 + ballZone * 60 + formationShift * FIELD_WIDTH;
-          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.2 : FIELD_HEIGHT * 0.8;
-          // Striker runs
-          if (isAttacking) {
-            ty += (ball.y - ty) * 0.4;
-          }
-        }
-      } else {
-        if (p.role === "def") {
-          tx = FIELD_WIDTH - (20 + (1 - ballZone) * 35 + formationShift * FIELD_WIDTH);
-          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.25 : FIELD_HEIGHT * 0.75;
-        } else if (p.role === "mid") {
-          tx = FIELD_WIDTH - (50 + (1 - ballZone) * 50 + formationShift * FIELD_WIDTH);
-          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.3 : FIELD_HEIGHT * 0.7;
-        } else {
-          tx = FIELD_WIDTH - (90 + (1 - ballZone) * 60 + formationShift * FIELD_WIDTH);
-          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.2 : FIELD_HEIGHT * 0.8;
-        }
-      }
-      
-      // Follow ball Y slightly
-      ty += (ball.y - ty) * 0.15;
-    }
-
-    // Clamp positions
-    tx = Math.max(5, Math.min(FIELD_WIDTH - 5, tx));
-    ty = Math.max(5, Math.min(FIELD_HEIGHT - 5, ty));
-
-    const angle = Math.atan2(ty - p.y, tx - p.x);
-    const dist = Math.sqrt((tx - p.x) ** 2 + (ty - p.y) ** 2);
-    const baseSpeed = PLAYER_SPEED * AI_SPEED_FACTOR;
-    const speedMultiplier = p.speed ? (0.7 + (p.speed / 100) * 0.5) : 1;
-    const speed = dist > 2 ? baseSpeed * speedMultiplier : 0;
-
-    const vx = Math.cos(angle) * speed;
-    const vy = Math.sin(angle) * speed;
-
-    physics.movePlayer(p.id, vx, vy, shouldSprint, hasBall);
-    
-    // Dribble if has ball
-    if (hasBall) {
-      physics.dribbleBall(p.id, vx, vy);
-    }
-  };
-
   const gameLoop = () => {
     const state = gameState.current;
     const physics = physicsRef.current;
@@ -686,9 +483,21 @@ export const MatchScreen: React.FC = () => {
 
     // 3. Time management
     state.timeLeft -= 1 / 60;
-    if (state.timeLeft <= 0) {
-      handleMatchEnd();
-      return;
+    
+    // Add random extra time (1-3 seconds) when time runs out
+    if (state.timeLeft <= 0 && state.extraTime === 0) {
+      state.extraTime = Math.floor(Math.random() * 3) + 1;
+      setUiState((prev) => ({ ...prev, extraTime: state.extraTime }));
+    }
+    
+    if (state.timeLeft <= -state.extraTime) {
+      if (state.half === 1) {
+        handleHalfTime();
+        return;
+      } else {
+        handleMatchEnd();
+        return;
+      }
     }
 
     const currentTime = Math.max(0, Math.floor(state.timeLeft));
@@ -712,8 +521,6 @@ export const MatchScreen: React.FC = () => {
 
       p.hasBall = ballOwner === p.id;
       p.stamina = physics.getStamina(p.id);
-      p.targetX = undefined;
-      p.targetY = undefined;
 
       if (p.role !== "gk") {
         if (p.team === "home") {
@@ -734,22 +541,14 @@ export const MatchScreen: React.FC = () => {
     state.players.forEach((p) => {
       if (p.team === "home") {
         p.isUser = p === closestHomePlayer;
-        if (p.isUser) {
-          p.targetX = state.ball.x;
-          p.targetY = state.ball.y;
-          if (uiRefs.current.activePlayerId !== p.id) {
-            uiRefs.current.activePlayerId = p.id;
-            setUiState((prev) => ({ ...prev, activePlayerId: p.id }));
-          }
+        if (p.isUser && uiRefs.current.activePlayerId !== p.id) {
+          uiRefs.current.activePlayerId = p.id;
+          setUiState((prev) => ({ ...prev, activePlayerId: p.id }));
         }
       } else {
-        if (p === closestAwayPlayer) {
-          p.targetX = state.ball.x;
-          p.targetY = state.ball.y;
-          if (uiRefs.current.activeOpponentId !== p.id) {
-            uiRefs.current.activeOpponentId = p.id;
-            setUiState((prev) => ({ ...prev, activeOpponentId: p.id }));
-          }
+        if (p === closestAwayPlayer && uiRefs.current.activeOpponentId !== p.id) {
+          uiRefs.current.activeOpponentId = p.id;
+          setUiState((prev) => ({ ...prev, activeOpponentId: p.id }));
         }
       }
     });
@@ -766,18 +565,55 @@ export const MatchScreen: React.FC = () => {
         
         physics.movePlayer(p.id, vx, vy, sprintRef.current, hasBall);
         
-        // Dribble ball if we have it
         if (hasBall) {
           physics.dribbleBall(p.id, vx, vy);
         }
         
-        // Update stamina UI
         const stamina = physics.getStamina(p.id);
         if (Math.abs(stamina - uiState.stamina) > 1) {
           setUiState(prev => ({ ...prev, stamina }));
         }
       } else {
-        moveAI(p, state.ball, state.players, physics);
+        // All AI players (both teams)
+        const aiPlayer: AIPlayer = {
+          id: p.id,
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          team: p.team as "home" | "away",
+          role: p.role as "gk" | "def" | "mid" | "att",
+          speed: p.speed,
+          isUser: p.isUser,
+        };
+        const allAIPlayers = state.players.map(pl => ({
+          id: pl.id, x: pl.x, y: pl.y, vx: pl.vx, vy: pl.vy,
+          team: pl.team as "home" | "away",
+          role: pl.role as "gk" | "def" | "mid" | "att",
+          speed: pl.speed, isUser: pl.isUser,
+        }));
+        
+        const move = computeAIMove(
+          aiPlayer,
+          state.ball,
+          allAIPlayers,
+          physics,
+          () => sounds.pass(),
+          () => sounds.kick(),
+          (success, foul) => {
+            if (foul) {
+              setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
+              setTimeout(() => setUiState(prev => ({ ...prev, eventText: "" })), 1500);
+            } else if (success) {
+              sounds.kick();
+            }
+          }
+        );
+        
+        physics.movePlayer(p.id, move.vx, move.vy, move.sprint, hasBall);
+        if (hasBall) {
+          physics.dribbleBall(p.id, move.vx, move.vy);
+        }
       }
 
       // Sync position from physics
@@ -936,16 +772,19 @@ export const MatchScreen: React.FC = () => {
           </span>
         </div>
 
-        <div className="flex flex-col items-center min-w-[80px]">
+        <div className="flex flex-col items-center min-w-20">
           <div className="flex items-center gap-1 text-yellow-400">
             <Timer className="w-4 h-4" />
             <span className="text-xl font-bold tabular-nums">
               {Math.floor(uiState.timeLeft / 60)}:
               {(uiState.timeLeft % 60).toString().padStart(2, "0")}
+              {uiState.extraTime > 0 && uiState.timeLeft <= 0 && (
+                <span className="text-red-400 ml-1">+{uiState.extraTime}</span>
+              )}
             </span>
           </div>
           <div className="text-[8px] text-white/40 font-black uppercase tracking-widest mt-0.5">
-            {matchDuration / 60}m Match
+            {uiState.half === 1 ? "1ST" : "2ND"} HALF
           </div>
         </div>
 
@@ -966,6 +805,48 @@ export const MatchScreen: React.FC = () => {
             <Pause className="w-5 h-5 text-white fill-white" />
           )}
         </button>
+      </div>
+
+      {/* Controls Help - Bottom Left */}
+      <div className="absolute top-4 left-28 z-30 bg-black/60 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10 text-[10px] text-white/70">
+        <div className="font-bold text-white/90 mb-1">Controls</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <span>WASD/Arrows</span><span className="text-white/50">Move</span>
+          <span>Space</span><span className="text-white/50">Pass</span>
+          <span>Enter</span><span className="text-white/50">Shoot</span>
+          <span>Q</span><span className="text-white/50">Through</span>
+          <span>E</span><span className="text-white/50">Tackle</span>
+          <span>Shift</span><span className="text-white/50">Sprint</span>
+        </div>
+      </div>
+
+      {/* Mini-Map - Bottom Right */}
+      <div className="absolute top-4 right-8 z-30 bg-black/60 backdrop-blur-md p-2 rounded-xl border border-white/10">
+        <div className="relative w-32 h-20 bg-emerald-800/50 rounded border border-white/20">
+          {/* Center line */}
+          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20"></div>
+          {/* Players on mini-map */}
+          {gameState.current.players.map((p) => (
+            <div
+              key={`mini-${p.id}`}
+              className="absolute w-2 h-2 rounded-full -translate-x-1/2 -translate-y-1/2"
+              style={{
+                left: `${(p.x / FIELD_WIDTH) * 100}%`,
+                top: `${(p.y / FIELD_HEIGHT) * 100}%`,
+                backgroundColor: p.team === "home" ? (selectedTeam?.primaryColor || "#3b82f6") : "#ef4444",
+                border: p.isUser ? "2px solid white" : "1px solid rgba(255,255,255,0.3)",
+              }}
+            />
+          ))}
+          {/* Ball on mini-map */}
+          <div
+            className="absolute w-1.5 h-1.5 bg-white rounded-full -translate-x-1/2 -translate-y-1/2"
+            style={{
+              left: `${(gameState.current.ball.x / FIELD_WIDTH) * 100}%`,
+              top: `${(gameState.current.ball.y / FIELD_HEIGHT) * 100}%`,
+            }}
+          />
+        </div>
       </div>
 
       {/* Main Pitch View */}
@@ -1006,10 +887,10 @@ export const MatchScreen: React.FC = () => {
 
             {/* Goals */}
             <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-4 h-[30%] bg-white/5 border-2 border-white/40 flex items-center justify-center">
-              <div className="w-full h-full opacity-20 bg-[radial-gradient(circle,white_1px,transparent_1px)] bg-[length:4px_4px]"></div>
+              <div className="w-full h-full opacity-20 bg-[radial-gradient(circle,white_1px,transparent_1px)] bg-size-[4px_4px]"></div>
             </div>
             <div className="absolute -right-1 top-1/2 -translate-y-1/2 w-4 h-[30%] bg-white/5 border-2 border-white/40 flex items-center justify-center">
-              <div className="w-full h-full opacity-20 bg-[radial-gradient(circle,white_1px,transparent_1px)] bg-[length:4px_4px]"></div>
+              <div className="w-full h-full opacity-20 bg-[radial-gradient(circle,white_1px,transparent_1px)] bg-size-[4px_4px]"></div>
             </div>
           </div>
 
@@ -1066,7 +947,7 @@ export const MatchScreen: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-6"
+            className="absolute inset-0 bg-slate-950/80 backdrop-blur-md z-100 flex items-center justify-center p-6"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
