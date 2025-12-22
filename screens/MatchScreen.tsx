@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Joystick } from "../components/Joystick";
 import { PixelPlayer } from "../components/PixelPlayer";
 import { sounds } from "../utils/sounds";
-import { GamePhysics } from "../utils/physics";
+import { GamePhysics, KickOptions } from "../utils/physics";
 import {
   Timer,
   Trophy,
@@ -15,6 +15,7 @@ import {
   Play,
   RefreshCw,
   LogOut,
+  Target,
 } from "lucide-react";
 
 // --- Game Engine Constants ---
@@ -22,9 +23,40 @@ const FIELD_WIDTH = 200;
 const FIELD_HEIGHT = 120;
 const PLAYER_RADIUS = 3.5;
 const BALL_RADIUS = 2;
-const PLAYER_SPEED = 5; // Physics velocity
-const KICK_FORCE = 0.5; // Physics impulse
-const AI_SPEED_FACTOR = 0.9;
+const PLAYER_SPEED = 5;
+const AI_SPEED_FACTOR = 0.92;
+
+// Formation positions (4-3-3)
+const FORMATIONS = {
+  "4-3-3": {
+    home: [
+      { role: "gk", x: 0.08, y: 0.5 },
+      { role: "def", x: 0.22, y: 0.2 },
+      { role: "def", x: 0.22, y: 0.4 },
+      { role: "def", x: 0.22, y: 0.6 },
+      { role: "def", x: 0.22, y: 0.8 },
+      { role: "mid", x: 0.4, y: 0.25 },
+      { role: "mid", x: 0.4, y: 0.5 },
+      { role: "mid", x: 0.4, y: 0.75 },
+      { role: "att", x: 0.6, y: 0.2 },
+      { role: "att", x: 0.6, y: 0.5 },
+      { role: "att", x: 0.6, y: 0.8 },
+    ],
+    away: [
+      { role: "gk", x: 0.92, y: 0.5 },
+      { role: "def", x: 0.78, y: 0.2 },
+      { role: "def", x: 0.78, y: 0.4 },
+      { role: "def", x: 0.78, y: 0.6 },
+      { role: "def", x: 0.78, y: 0.8 },
+      { role: "mid", x: 0.6, y: 0.25 },
+      { role: "mid", x: 0.6, y: 0.5 },
+      { role: "mid", x: 0.6, y: 0.75 },
+      { role: "att", x: 0.4, y: 0.2 },
+      { role: "att", x: 0.4, y: 0.5 },
+      { role: "att", x: 0.4, y: 0.8 },
+    ],
+  },
+};
 
 interface GameObject {
   id: string;
@@ -45,6 +77,7 @@ interface GameObject {
   hasBall?: boolean;
   targetX?: number;
   targetY?: number;
+  stamina?: number;
 }
 
 export const MatchScreen: React.FC = () => {
@@ -85,6 +118,11 @@ export const MatchScreen: React.FC = () => {
   const scaleRef = useRef(1);
   const possessionRef = useRef({ home: 0, away: 0 });
   const physicsRef = useRef<GamePhysics | null>(null);
+  
+  // Kick charging state
+  const kickChargeRef = useRef({ charging: false, startTime: 0, type: "pass" as "pass" | "shoot" });
+  const tackleRef = useRef({ sliding: false, cooldown: 0 });
+  
   const uiRefs = useRef({
     activePlayerId: "h_att1",
     activeOpponentId: "",
@@ -99,6 +137,8 @@ export const MatchScreen: React.FC = () => {
     isPaused: false,
     activePlayerId: "h_att1",
     activeOpponentId: "",
+    kickPower: 0,
+    stamina: 100,
   });
 
   const updateScale = useCallback(() => {
@@ -133,6 +173,8 @@ export const MatchScreen: React.FC = () => {
       eventText: "RESTART!",
       activePlayerId: "h_att1",
       activeOpponentId: "",
+      kickPower: 0,
+      stamina: 100,
     });
     state.isPlaying = true;
     setTimeout(() => setUiState((prev) => ({ ...prev, eventText: "" })), 1000);
@@ -226,10 +268,32 @@ export const MatchScreen: React.FC = () => {
     }, 1500);
   };
 
+  const handleOutOfBounds = (type: "throw-in" | "corner" | "goal-kick", team: "home" | "away", x: number, y: number) => {
+    const state = gameState.current;
+    const physics = physicsRef.current;
+    if (!state.isPlaying || !physics) return;
+
+    state.isPlaying = false;
+    sounds.bounce();
+
+    const eventLabels = { "throw-in": "THROW IN", "corner": "CORNER", "goal-kick": "GOAL KICK" };
+    setUiState((prev) => ({ ...prev, eventText: `${eventLabels[type]} - ${team.toUpperCase()}` }));
+
+    setTimeout(() => {
+      physics.placeBall(x, y);
+      state.ball.x = x;
+      state.ball.y = y;
+      state.ball.vx = 0;
+      state.ball.vy = 0;
+      setUiState((prev) => ({ ...prev, eventText: "" }));
+      state.isPlaying = true;
+    }, 800);
+  };
+
   const handleMatchEnd = () => {
     gameState.current.isPlaying = false;
     const { home, away } = gameState.current.score;
-    const outcome = home > away ? "win" : home < away ? "loss" : "draw";
+    const outcome = home > away ? "WIN" : home < away ? "LOSS" : "DRAW";
     const totalPossession = possessionRef.current.home + possessionRef.current.away;
     const possession = totalPossession > 0 ? Math.round((possessionRef.current.home / totalPossession) * 100) : 50;
 
@@ -241,41 +305,120 @@ export const MatchScreen: React.FC = () => {
         homeScore: home,
         awayScore: away,
         possession,
-        xpEarned: outcome === "win" ? 100 : outcome === "draw" ? 50 : 20,
+        xpEarned: outcome === "WIN" ? 100 : outcome === "DRAW" ? 50 : 20,
+        outcome,
       });
       setScreen(ScreenName.MATCH_RESULT);
     }, 2000);
   };
 
-  const handleKick = (force: number) => {
+  // Start charging a kick
+  const startKickCharge = (type: "pass" | "shoot") => {
+    kickChargeRef.current = { charging: true, startTime: Date.now(), type };
+  };
+
+  // Release kick with charged power
+  const releaseKick = () => {
     const state = gameState.current;
     const physics = physicsRef.current;
-    if (!state.isPlaying || !physics) return;
+    const charge = kickChargeRef.current;
+    
+    if (!state.isPlaying || !physics || !charge.charging) return;
+    kickChargeRef.current.charging = false;
     
     const user = state.players.find((p) => p.isUser);
     if (!user) return;
 
-    const ballState = physics.getBallState();
-    const dx = ballState.x - user.x;
-    const dy = ballState.y - user.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const ballOwner = physics.getBallOwner();
+    if (ballOwner !== user.id) return;
 
-    if (dist < PLAYER_RADIUS + BALL_RADIUS + 6) {
-      let angle = Math.atan2(dy, dx);
-      const joyMag = Math.sqrt(joystickRef.current.x ** 2 + joystickRef.current.y ** 2);
-      if (joyMag > 0.1) {
-        angle = Math.atan2(joystickRef.current.y, joystickRef.current.x);
-      }
+    // Calculate power (0-1) based on charge time (max 1 second)
+    const chargeTime = Math.min(Date.now() - charge.startTime, 1000);
+    const power = chargeTime / 1000;
 
-      const shotStat = force > KICK_FORCE * 0.7 ? (user.shooting || 70) : (user.passing || 70);
-      const powerMultiplier = 0.8 + (shotStat / 100) * 0.4;
-      const variance = (1 - shotStat / 100) * 0.1;
-      const finalAngle = angle + (Math.random() - 0.5) * variance;
+    // Get kick angle from joystick or ball direction
+    let angle: number;
+    const joyMag = Math.sqrt(joystickRef.current.x ** 2 + joystickRef.current.y ** 2);
+    if (joyMag > 0.1) {
+      angle = Math.atan2(joystickRef.current.y, joystickRef.current.x);
+    } else {
+      // Default: kick towards opponent goal
+      angle = user.team === "home" ? 0 : Math.PI;
+    }
 
-      physics.applyKick(force * powerMultiplier, finalAngle);
-      force > KICK_FORCE * 0.7 ? sounds.kick() : sounds.pass();
+    // Add spin based on perpendicular joystick movement
+    const spin = joystickRef.current.y * 0.5;
+
+    const kickOptions: KickOptions = {
+      type: charge.type,
+      power,
+      targetAngle: angle,
+      spin,
+    };
+
+    physics.kick(kickOptions);
+    charge.type === "shoot" ? sounds.kick() : sounds.pass();
+    setUiState(prev => ({ ...prev, kickPower: 0 }));
+  };
+
+  // Slide tackle
+  const performSlideTackle = () => {
+    const state = gameState.current;
+    const physics = physicsRef.current;
+    if (!state.isPlaying || !physics) return;
+    if (tackleRef.current.cooldown > 0) return;
+
+    const user = state.players.find((p) => p.isUser);
+    if (!user) return;
+
+    const joyMag = Math.sqrt(joystickRef.current.x ** 2 + joystickRef.current.y ** 2);
+    const angle = joyMag > 0.1 
+      ? Math.atan2(joystickRef.current.y, joystickRef.current.x)
+      : (user.team === "home" ? 0 : Math.PI);
+
+    const result = physics.slideTackle(user.id, angle);
+    tackleRef.current = { sliding: true, cooldown: 60 }; // 1 second cooldown
+
+    if (result.foul) {
+      setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
+      setTimeout(() => setUiState(prev => ({ ...prev, eventText: "" })), 1500);
+    } else if (result.success) {
+      sounds.kick();
     }
   };
+
+  // Through ball (leads the target)
+  const performThroughBall = () => {
+    const state = gameState.current;
+    const physics = physicsRef.current;
+    if (!state.isPlaying || !physics) return;
+
+    const user = state.players.find((p) => p.isUser);
+    if (!user || physics.getBallOwner() !== user.id) return;
+
+    // Find best teammate to pass to
+    const teammates = state.players.filter(p => p.team === user.team && p.id !== user.id && p.role !== "gk");
+    const bestTarget = teammates.reduce((best, p) => {
+      const dist = Math.sqrt((p.x - user.x) ** 2 + (p.y - user.y) ** 2);
+      const forwardBonus = user.team === "home" ? p.x - user.x : user.x - p.x;
+      const score = forwardBonus * 2 - dist * 0.5;
+      return score > (best?.score || -Infinity) ? { player: p, score } : best;
+    }, null as { player: GameObject; score: number } | null);
+
+    if (bestTarget) {
+      // Lead the pass ahead of the target
+      const leadDist = 15;
+      const targetX = bestTarget.player.x + (user.team === "home" ? leadDist : -leadDist);
+      const targetY = bestTarget.player.y;
+      const angle = Math.atan2(targetY - user.y, targetX - user.x);
+
+      physics.kick({ type: "through", power: 0.7, targetAngle: angle });
+      sounds.pass();
+    }
+  };
+
+  // AI State Refs
+  const aiState = useRef<{ [playerId: string]: { tackleCooldown: number; decisionTimer: number; targetId?: string } }>({});
 
   const moveAI = (
     p: GameObject,
@@ -283,93 +426,190 @@ export const MatchScreen: React.FC = () => {
     allPlayers: GameObject[],
     physics: GamePhysics,
   ) => {
+    // Initialize AI state
+    if (!aiState.current[p.id]) {
+      aiState.current[p.id] = { tackleCooldown: 0, decisionTimer: 0 };
+    }
+    const ai = aiState.current[p.id];
+    if (ai.tackleCooldown > 0) ai.tackleCooldown--;
+
     const distToBall = Math.sqrt((ball.x - p.x) ** 2 + (ball.y - p.y) ** 2);
+    const hasBall = physics.getBallOwner() === p.id;
     let tx = p.x;
     let ty = p.y;
+    let shouldSprint = false;
 
     if (p.role === "gk") {
-      // Better GK positioning: Stay on line but track ball
-      tx = p.team === "home" ? 8 : FIELD_WIDTH - 8;
-      // Follow ball Y but stay within goal posts
-      const targetY = Math.max(
-        FIELD_HEIGHT * 0.38,
-        Math.min(FIELD_HEIGHT * 0.62, ball.y),
-      );
+      // Goalkeeper AI - diving saves
+      const goalX = p.team === "home" ? 8 : FIELD_WIDTH - 8;
+      tx = goalX;
+      
+      // Track ball Y position
+      const targetY = Math.max(FIELD_HEIGHT * 0.35, Math.min(FIELD_HEIGHT * 0.65, ball.y));
       ty = targetY;
 
-      // If ball is very close, charge it
-      if (distToBall < 12) {
+      // Dive if ball is coming fast towards goal
+      const ballVelTowardsGoal = p.team === "home" ? -ball.vx : ball.vx;
+      if (ballVelTowardsGoal > 2 && distToBall < 25) {
         tx = ball.x;
         ty = ball.y;
+        shouldSprint = true;
+      }
+      
+      // Charge out if ball is very close
+      if (distToBall < 15 && Math.abs(ball.x - goalX) < 30) {
+        tx = ball.x;
+        ty = ball.y;
+        shouldSprint = true;
+      }
+    } else if (hasBall) {
+      // AI with ball - smart attacking
+      const goalX = p.team === "home" ? FIELD_WIDTH : 0;
+      const goalY = FIELD_HEIGHT / 2;
+      
+      // Check for nearby defenders
+      const nearbyDefenders = allPlayers.filter(
+        (other) => other.team !== p.team &&
+          Math.sqrt((other.x - p.x) ** 2 + (other.y - p.y) ** 2) < 25
+      );
+
+      if (nearbyDefenders.length > 0) {
+        // Look for pass
+        const teammates = allPlayers.filter(t => t.team === p.team && t.id !== p.id && t.role !== "gk");
+        const bestPass = teammates.reduce((best, t) => {
+          const dist = Math.sqrt((t.x - p.x) ** 2 + (t.y - p.y) ** 2);
+          const forwardBonus = p.team === "home" ? t.x - p.x : p.x - t.x;
+          // Check if pass lane is clear
+          const blocked = nearbyDefenders.some(d => {
+            const passAngle = Math.atan2(t.y - p.y, t.x - p.x);
+            const defAngle = Math.atan2(d.y - p.y, d.x - p.x);
+            return Math.abs(passAngle - defAngle) < 0.3 && 
+              Math.sqrt((d.x - p.x) ** 2 + (d.y - p.y) ** 2) < dist;
+          });
+          const score = blocked ? -100 : forwardBonus * 2 + (100 - dist) * 0.5;
+          return score > (best?.score || -Infinity) ? { player: t, score } : best;
+        }, null as { player: GameObject; score: number } | null);
+
+        if (bestPass && bestPass.score > 20 && Math.random() < 0.03) {
+          // One-two pass
+          const angle = Math.atan2(bestPass.player.y - p.y, bestPass.player.x - p.x);
+          physics.kick({ type: "pass", power: 0.5 + Math.random() * 0.3, targetAngle: angle });
+          sounds.pass();
+          return;
+        }
+      }
+
+      // Shooting range check
+      const distToGoal = Math.sqrt((goalX - p.x) ** 2 + (goalY - p.y) ** 2);
+      if (distToGoal < 50 && Math.random() < 0.04) {
+        const angle = Math.atan2(goalY - p.y + (Math.random() - 0.5) * 20, goalX - p.x);
+        physics.kick({ type: "shoot", power: 0.8 + Math.random() * 0.2, targetAngle: angle, spin: (Math.random() - 0.5) * 0.5 });
+        sounds.kick();
+        return;
+      }
+
+      // Dribble towards goal, avoiding defenders
+      tx = goalX;
+      ty = goalY;
+      if (nearbyDefenders.length > 0) {
+        const closest = nearbyDefenders[0];
+        // Move away from closest defender
+        ty = closest.y > p.y ? p.y - 20 : p.y + 20;
+      }
+      shouldSprint = distToGoal < 60;
+      
+    } else if (p.targetX !== undefined) {
+      // Chasing ball
+      tx = ball.x;
+      ty = ball.y;
+      shouldSprint = distToBall < 40;
+      
+      // DEFENSIVE LOGIC
+      if (p.team !== physics.getBallOwner()?.charAt(0)) {
+        // Opponent has ball
+        const ballOwnerId = physics.getBallOwner();
+        const ballOwner = allPlayers.find(pl => pl.id === ballOwnerId);
+
+        if (ballOwner) {
+            // Intercept path
+            const goalX = p.team === "home" ? 0 : FIELD_WIDTH;
+            // Lead the interception point slightly
+            tx = ball.x + (goalX - ball.x) * 0.2 + ball.vx * 0.5; 
+            ty = ball.y + ball.vy * 0.5;
+
+            // Attempt Tackle if close
+            if (ai.tackleCooldown === 0 && distToBall < 12) {
+                // Standing Tackle
+                if (distToBall < 6) {
+                    if (physics.standingTackle(p.id)) {
+                        ai.tackleCooldown = 60; // 1s cooldown
+                        sounds.kick(); // sound for successful tackle bump
+                    }
+                } 
+                // Slide Tackle (Only if behind or desperate)
+                else if (Math.random() < 0.05) { // Low probability per frame to avoid spam
+                    const angle = Math.atan2(ball.y - p.y, ball.x - p.x);
+                    const result = physics.slideTackle(p.id, angle);
+                    if (result.success || result.foul) {
+                        ai.tackleCooldown = 120; // 2s cooldown
+                        if (result.foul) {
+                            setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
+                            setTimeout(() => setUiState(prev => ({ ...prev, eventText: "" })), 1500);
+                        } else {
+                            sounds.kick();
+                        }
+                    }
+                }
+            }
+        }
       }
     } else {
-      // Determine if this player is the one currently chasing the ball
-      const isActiveChaser = p.targetX === ball.x && p.targetY === ball.y;
-
-      if (isActiveChaser) {
-        if (p.team === "away" && p.hasBall) {
-          // AI Attacking with ball: Head towards goal but avoid nearby defenders
-          tx = 0;
-          ty = FIELD_HEIGHT / 2;
-
-          const nearbyDefender = allPlayers.find(
-            (other) =>
-              other.team === "home" &&
-              Math.sqrt((other.x - p.x) ** 2 + (other.y - p.y) ** 2) < 20,
-          );
-          if (nearbyDefender) {
-            ty = nearbyDefender.y > p.y ? p.y - 15 : p.y + 15;
-          }
-
-          if (p.x < 45) {
-            ty =
-              ball.y > FIELD_HEIGHT / 2
-                ? FIELD_HEIGHT * 0.38
-                : FIELD_HEIGHT * 0.62;
+      // Off-ball positioning with formation awareness
+      const ballZone = ball.x / FIELD_WIDTH;
+      const isAttacking = (p.team === "home" && ballZone > 0.5) || (p.team === "away" && ballZone < 0.5);
+      
+      // Base position from formation
+      const formationShift = isAttacking ? 0.15 : -0.1;
+      
+      if (p.team === "home") {
+        if (p.role === "def") {
+          tx = 20 + ballZone * 35 + formationShift * FIELD_WIDTH;
+          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.25 : FIELD_HEIGHT * 0.75;
+        } else if (p.role === "mid") {
+          tx = 50 + ballZone * 50 + formationShift * FIELD_WIDTH;
+          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.3 : FIELD_HEIGHT * 0.7;
+          // Off-ball run
+          if (isAttacking && Math.random() < 0.01) {
+            tx += 30;
           }
         } else {
-          // Chasing the ball
-          tx = ball.x;
-          ty = ball.y;
+          tx = 90 + ballZone * 60 + formationShift * FIELD_WIDTH;
+          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.2 : FIELD_HEIGHT * 0.8;
+          // Striker runs
+          if (isAttacking) {
+            ty += (ball.y - ty) * 0.4;
+          }
         }
       } else {
-        // Strategic positioning based on ball location
-        const ballZone = ball.x / FIELD_WIDTH; // 0 to 1
-
-        if (p.team === "home") {
-          const userPlayer = allPlayers.find((u) => u.isUser);
-          const userHasBall = userPlayer?.hasBall;
-
-          // Home team positioning
-          if (p.role === "def") {
-            tx = 25 + ballZone * 40;
-            ty = p.id.includes("1") ? FIELD_HEIGHT * 0.3 : FIELD_HEIGHT * 0.7;
-          } else if (p.role === "mid") {
-            tx = 60 + ballZone * 60;
-            if (userHasBall && p.x < userPlayer.x + 40) tx += 20;
-            ty = p.id.includes("1") ? FIELD_HEIGHT * 0.25 : FIELD_HEIGHT * 0.75;
-          } else {
-            tx = 100 + ballZone * 70;
-            if (userHasBall) tx += 30;
-            ty = p.id.includes("1") ? FIELD_HEIGHT * 0.2 : FIELD_HEIGHT * 0.8;
-          }
+        if (p.role === "def") {
+          tx = FIELD_WIDTH - (20 + (1 - ballZone) * 35 + formationShift * FIELD_WIDTH);
+          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.25 : FIELD_HEIGHT * 0.75;
+        } else if (p.role === "mid") {
+          tx = FIELD_WIDTH - (50 + (1 - ballZone) * 50 + formationShift * FIELD_WIDTH);
+          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.3 : FIELD_HEIGHT * 0.7;
         } else {
-          // Away team positioning
-          if (p.role === "def") {
-            tx = FIELD_WIDTH - (25 + (1 - ballZone) * 40);
-            ty = p.id.includes("1") ? FIELD_HEIGHT * 0.3 : FIELD_HEIGHT * 0.7;
-          } else if (p.role === "mid") {
-            tx = FIELD_WIDTH - (60 + (1 - ballZone) * 60);
-            ty = p.id.includes("1") ? FIELD_HEIGHT * 0.25 : FIELD_HEIGHT * 0.75;
-          } else {
-            tx = FIELD_WIDTH - (100 + (1 - ballZone) * 70);
-            ty = p.id.includes("1") ? FIELD_HEIGHT * 0.2 : FIELD_HEIGHT * 0.8;
-          }
+          tx = FIELD_WIDTH - (90 + (1 - ballZone) * 60 + formationShift * FIELD_WIDTH);
+          ty = p.id.includes("1") ? FIELD_HEIGHT * 0.2 : FIELD_HEIGHT * 0.8;
         }
-        // Slightly follow ball Y
-        ty += (ball.y - ty) * 0.2;
       }
+      
+      // Follow ball Y slightly
+      ty += (ball.y - ty) * 0.15;
     }
+
+    // Clamp positions
+    tx = Math.max(5, Math.min(FIELD_WIDTH - 5, tx));
+    ty = Math.max(5, Math.min(FIELD_HEIGHT - 5, ty));
 
     const angle = Math.atan2(ty - p.y, tx - p.x);
     const dist = Math.sqrt((tx - p.x) ** 2 + (ty - p.y) ** 2);
@@ -380,8 +620,12 @@ export const MatchScreen: React.FC = () => {
     const vx = Math.cos(angle) * speed;
     const vy = Math.sin(angle) * speed;
 
-    // Move via physics
-    physics.movePlayer(p.id, vx, vy);
+    physics.movePlayer(p.id, vx, vy, shouldSprint, hasBall);
+    
+    // Dribble if has ball
+    if (hasBall) {
+      physics.dribbleBall(p.id, vx, vy);
+    }
   };
 
   const gameLoop = () => {
@@ -417,6 +661,19 @@ export const MatchScreen: React.FC = () => {
       }
     }
 
+    // Update kick charge UI
+    if (kickChargeRef.current.charging) {
+      const chargeTime = Math.min(Date.now() - kickChargeRef.current.startTime, 1000);
+      const power = chargeTime / 1000;
+      setUiState(prev => prev.kickPower !== power ? { ...prev, kickPower: power } : prev);
+    }
+
+    // Update tackle cooldown
+    if (tackleRef.current.cooldown > 0) {
+      tackleRef.current.cooldown--;
+      if (tackleRef.current.cooldown === 0) tackleRef.current.sliding = false;
+    }
+
     // 2. Step physics
     physics.step(1 / 60);
 
@@ -437,21 +694,11 @@ export const MatchScreen: React.FC = () => {
     const currentTime = Math.max(0, Math.floor(state.timeLeft));
     if (currentTime !== uiRefs.current.timeLeft) {
       uiRefs.current.timeLeft = currentTime;
-      setUiState((prev) => ({
-        ...prev,
-        timeLeft: currentTime,
-      }));
+      setUiState((prev) => ({ ...prev, timeLeft: currentTime }));
     }
 
-    // Anti-stuck Corner Logic
-    const isInCorner =
-      (state.ball.x < 15 || state.ball.x > FIELD_WIDTH - 15) &&
-      (state.ball.y < 15 || state.ball.y > FIELD_HEIGHT - 15);
-    const isStationary = Math.abs(state.ball.vx) < 1 && Math.abs(state.ball.vy) < 1;
-    if (isInCorner && isStationary && state.isPlaying) {
-      const angle = Math.atan2(FIELD_HEIGHT / 2 - state.ball.y, FIELD_WIDTH / 2 - state.ball.x);
-      physics.applyKick(KICK_FORCE * 0.3, angle);
-    }
+    // Get ball owner
+    const ballOwner = physics.getBallOwner();
 
     // Logic to find closest players for each team
     let closestHomePlayer: GameObject | null = null;
@@ -461,13 +708,10 @@ export const MatchScreen: React.FC = () => {
 
     state.players.forEach((p) => {
       let d = Math.sqrt((p.x - state.ball.x) ** 2 + (p.y - state.ball.y) ** 2);
-
-      // Bias towards currently controlled player to avoid flickering
       if (p.isUser) d *= 0.85;
 
-      p.hasBall = d < PLAYER_RADIUS + BALL_RADIUS + 1;
-
-      // Clear targets
+      p.hasBall = ballOwner === p.id;
+      p.stamina = physics.getStamina(p.id);
       p.targetX = undefined;
       p.targetY = undefined;
 
@@ -506,42 +750,32 @@ export const MatchScreen: React.FC = () => {
             uiRefs.current.activeOpponentId = p.id;
             setUiState((prev) => ({ ...prev, activeOpponentId: p.id }));
           }
-
-          // AI Away Team Decision Logic
-          if (p.hasBall && physics) {
-            const inShootingRange = p.x < 75;
-            const teammate = state.players.find(
-              (other) =>
-                other.team === "away" &&
-                other.id !== p.id &&
-                other.x < p.x - 20 &&
-                other.role !== "gk",
-            );
-
-            if (inShootingRange && Math.random() < 0.05) {
-              const targetY = FIELD_HEIGHT * 0.4 + Math.random() * FIELD_HEIGHT * 0.2;
-              const angle = Math.atan2(targetY - p.y, -p.x);
-              physics.applyKick(KICK_FORCE * 1.5, angle);
-              sounds.kick();
-            } else if (teammate && Math.random() < 0.02) {
-              const angle = Math.atan2(teammate.y - p.y, teammate.x - p.x);
-              physics.applyKick(KICK_FORCE * 0.8, angle);
-              sounds.pass();
-            }
-          }
         }
       }
     });
 
     // Player Movement via Physics
     state.players.forEach((p) => {
+      const hasBall = ballOwner === p.id;
+      
       if (p.isUser) {
         const speedMultiplier = p.speed ? (0.7 + (p.speed / 100) * 0.5) : 1;
-        const sprintBoost = sprintRef.current ? 1.4 : 1;
-        const playerSpeed = PLAYER_SPEED * speedMultiplier * sprintBoost;
+        const playerSpeed = PLAYER_SPEED * speedMultiplier;
         const vx = joystickRef.current.x * playerSpeed;
         const vy = joystickRef.current.y * playerSpeed;
-        physics.movePlayer(p.id, vx, vy);
+        
+        physics.movePlayer(p.id, vx, vy, sprintRef.current, hasBall);
+        
+        // Dribble ball if we have it
+        if (hasBall) {
+          physics.dribbleBall(p.id, vx, vy);
+        }
+        
+        // Update stamina UI
+        const stamina = physics.getStamina(p.id);
+        if (Math.abs(stamina - uiState.stamina) > 1) {
+          setUiState(prev => ({ ...prev, stamina }));
+        }
       } else {
         moveAI(p, state.ball, state.players, physics);
       }
@@ -556,7 +790,7 @@ export const MatchScreen: React.FC = () => {
       }
 
       // Track possession
-      if (p.hasBall) {
+      if (hasBall) {
         if (p.team === "home") possessionRef.current.home++;
         else possessionRef.current.away++;
       }
@@ -585,8 +819,22 @@ export const MatchScreen: React.FC = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       activeKeys.current.add(e.code);
-      if (e.code === "Space") handleKick(KICK_FORCE * 0.6);
-      if (e.code === "Enter") handleKick(KICK_FORCE);
+      
+      // Kick controls - hold to charge
+      if (e.code === "Space" && !kickChargeRef.current.charging) {
+        startKickCharge("pass");
+      }
+      if (e.code === "Enter" && !kickChargeRef.current.charging) {
+        startKickCharge("shoot");
+      }
+      // Through ball
+      if (e.code === "KeyQ") {
+        performThroughBall();
+      }
+      // Slide tackle
+      if (e.code === "KeyE") {
+        performSlideTackle();
+      }
       if (e.code === "Escape") togglePause();
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") sprintRef.current = true;
     };
@@ -595,6 +843,11 @@ export const MatchScreen: React.FC = () => {
       activeKeys.current.delete(e.code);
       if (activeKeys.current.size === 0) joystickRef.current = { x: 0, y: 0 };
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") sprintRef.current = false;
+      
+      // Release kick
+      if (e.code === "Space" || e.code === "Enter") {
+        releaseKick();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -609,6 +862,7 @@ export const MatchScreen: React.FC = () => {
     physics.onCollision = (type) => {
       if (type === "bounce") sounds.bounce();
     };
+    physics.onOutOfBounds = (type, team, x, y) => handleOutOfBounds(type, team, x, y);
 
     // Init Players
     const homeTeam = [
@@ -627,7 +881,7 @@ export const MatchScreen: React.FC = () => {
       vy: 0,
       type: "player",
       team: "home",
-      color: selectedTeam?.color || p.color,
+      color: selectedTeam?.primaryColor || p.color,
     })) as GameObject[];
 
     const awayTeam = [
@@ -675,7 +929,7 @@ export const MatchScreen: React.FC = () => {
         <div className="flex items-center gap-3">
           <div
             className="w-8 h-8 rounded-full border-2 border-white"
-            style={{ backgroundColor: selectedTeam?.color || "#3b82f6" }}
+            style={{ backgroundColor: selectedTeam?.primaryColor || "#3b82f6" }}
           ></div>
           <span className="text-2xl font-black text-white">
             {uiState.homeScore}
@@ -837,38 +1091,30 @@ export const MatchScreen: React.FC = () => {
                 <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
                   <Zap className="w-3 h-3 text-blue-400" /> Controls Guide
                 </p>
-                <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+                <div className="grid grid-cols-2 gap-y-2 gap-x-4">
                   <div className="flex flex-col text-left">
-                    <span className="text-[8px] text-white/20 uppercase font-black tracking-tighter">
-                      Movement
-                    </span>
-                    <span className="text-[10px] text-white/80 font-bold">
-                      WASD / ARROWS
-                    </span>
+                    <span className="text-[8px] text-white/20 uppercase font-black">Movement</span>
+                    <span className="text-[10px] text-white/80 font-bold">WASD / ARROWS</span>
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="text-[8px] text-white/20 uppercase font-black tracking-tighter">
-                      Short Pass
-                    </span>
-                    <span className="text-[10px] text-white/80 font-bold">
-                      SPACE / BLUE
-                    </span>
+                    <span className="text-[8px] text-white/20 uppercase font-black">Pass (Hold)</span>
+                    <span className="text-[10px] text-white/80 font-bold">SPACE</span>
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="text-[8px] text-white/20 uppercase font-black tracking-tighter">
-                      Power Shot
-                    </span>
-                    <span className="text-[10px] text-white/80 font-bold">
-                      ENTER / RED
-                    </span>
+                    <span className="text-[8px] text-white/20 uppercase font-black">Shoot (Hold)</span>
+                    <span className="text-[10px] text-white/80 font-bold">ENTER</span>
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="text-[8px] text-white/20 uppercase font-black tracking-tighter">
-                      Main Menu
-                    </span>
-                    <span className="text-[10px] text-white/80 font-bold">
-                      ESCAPE KEY
-                    </span>
+                    <span className="text-[8px] text-white/20 uppercase font-black">Through Ball</span>
+                    <span className="text-[10px] text-white/80 font-bold">Q</span>
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-[8px] text-white/20 uppercase font-black">Slide Tackle</span>
+                    <span className="text-[10px] text-white/80 font-bold">E</span>
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-[8px] text-white/20 uppercase font-black">Sprint</span>
+                    <span className="text-[10px] text-white/80 font-bold">SHIFT</span>
                   </div>
                 </div>
               </div>
@@ -915,37 +1161,80 @@ export const MatchScreen: React.FC = () => {
         </div>
       </div>
 
-      <div className="absolute bottom-6 right-6 z-40 md:right-12 flex gap-4">
-        <div className="flex flex-col items-center gap-2">
+      {/* Power meter */}
+      {uiState.kickPower > 0 && (
+        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-50">
+          <div className="w-32 h-3 bg-black/50 rounded-full overflow-hidden border border-white/20">
+            <div 
+              className={`h-full transition-all ${uiState.kickPower > 0.7 ? 'bg-red-500' : uiState.kickPower > 0.4 ? 'bg-yellow-500' : 'bg-green-500'}`}
+              style={{ width: `${uiState.kickPower * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Stamina bar */}
+      <div className="absolute top-20 left-4 z-30">
+        <div className="flex items-center gap-2">
+          <Zap className="w-3 h-3 text-yellow-400" />
+          <div className="w-16 h-2 bg-black/50 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all ${uiState.stamina < 30 ? 'bg-red-500' : 'bg-yellow-400'}`}
+              style={{ width: `${uiState.stamina}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute bottom-6 right-6 z-40 md:right-12 flex gap-3">
+        {/* Tackle button */}
+        <div className="flex flex-col items-center">
           <button
-            className="w-16 h-16 rounded-full bg-green-600 border-b-8 border-green-900 shadow-2xl active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center group"
+            className="w-14 h-14 rounded-full bg-orange-600 border-b-6 border-orange-900 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center"
+            onPointerDown={performSlideTackle}
+          >
+            <Target className="w-5 h-5 text-white" />
+          </button>
+          <span className="text-[8px] text-white/50 mt-1">TACKLE</span>
+        </div>
+        
+        {/* Sprint button */}
+        <div className="flex flex-col items-center">
+          <button
+            className={`w-14 h-14 rounded-full border-b-6 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center ${sprintRef.current ? 'bg-green-400 border-green-700' : 'bg-green-600 border-green-900'}`}
             onPointerDown={() => sprintRef.current = true}
             onPointerUp={() => sprintRef.current = false}
             onPointerLeave={() => sprintRef.current = false}
           >
-            <Zap className="w-6 h-6 text-white group-active:scale-90 fill-white" />
-            <div className="absolute -top-10 text-xs text-white/60">SPRINT</div>
+            <Zap className="w-5 h-5 text-white fill-white" />
           </button>
+          <span className="text-[8px] text-white/50 mt-1">SPRINT</span>
         </div>
-        <div className="flex flex-col items-center gap-2">
+        
+        {/* Pass button - hold to charge */}
+        <div className="flex flex-col items-center">
           <button
-            className="w-20 h-20 rounded-full bg-blue-600 border-b-8 border-blue-900 shadow-2xl active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center group"
-            onPointerDown={() => handleKick(KICK_FORCE * 0.6)}
+            className="w-16 h-16 rounded-full bg-blue-600 border-b-6 border-blue-900 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center"
+            onPointerDown={() => startKickCharge("pass")}
+            onPointerUp={releaseKick}
+            onPointerLeave={releaseKick}
           >
-            <Zap className="w-8 h-8 text-white group-active:scale-90" />
-            <div className="absolute -top-10 text-xs text-white/60">PASS</div>
+            <Zap className="w-6 h-6 text-white" />
           </button>
+          <span className="text-[8px] text-white/50 mt-1">PASS</span>
         </div>
-        <div className="flex flex-col items-center gap-2">
+        
+        {/* Shoot button - hold to charge */}
+        <div className="flex flex-col items-center">
           <button
-            className="w-24 h-24 rounded-full bg-red-600 border-b-8 border-red-900 shadow-2xl active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center group"
-            onPointerDown={() => handleKick(KICK_FORCE)}
+            className="w-20 h-20 rounded-full bg-red-600 border-b-8 border-red-900 shadow-2xl active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center"
+            onPointerDown={() => startKickCharge("shoot")}
+            onPointerUp={releaseKick}
+            onPointerLeave={releaseKick}
           >
-            <Trophy className="w-10 h-10 text-white group-active:scale-90" />
-            <div className="absolute -top-10 text-xs text-white/60 font-black">
-              SHOOT
-            </div>
+            <Trophy className="w-8 h-8 text-white" />
           </button>
+          <span className="text-[8px] text-white/50 mt-1">SHOOT</span>
         </div>
       </div>
 
@@ -958,7 +1247,7 @@ export const MatchScreen: React.FC = () => {
           <Zap className="w-3 h-3" /> {selectedTeam?.name}
         </div>
         <div className="hidden sm:block">
-          WASD/Arrows • Space=Pass • Enter=Shoot • Shift=Sprint
+          Hold SPACE/ENTER to charge • Q=Through Ball • E=Tackle • Shift=Sprint
         </div>
       </div>
     </div>
