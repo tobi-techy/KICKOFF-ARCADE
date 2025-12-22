@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+@theme {
+    --font-arcade: "Chakra Petch", sans-serif;
+    --font-sans: "Inter", sans-serif;
+}
+
+:root {
+    --app-height: 100%;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: fixed; /* Prevent bounce effects on mobile */
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    background-color: #0f172a;
+    color: #ffffff;
+    font-family: var(--font-sans);
+}
+
+#root {
+    width: 100%;
+    height: 100%;
+}
+
+@utility no-scrollbar {
+    &::-webkit-scrollbar {
+        display: none;
+    }
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+@utility pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility pt-safe {
+    padding-top: env(safe-area-inset-top);
+}
+
+.font-arcade {
+    font-family: var(--font-arcade);
+}
+
+@keyframes scanline {
+    0% {
+        transform: translateY(-100%);
+    }
+    100% {
+        transform: translateY(100%);
+    }
+}
+
+@keyframes flicker {
+    0% {
+        opacity: 0.97;
+    }
+    5% {
+        opacity: 0.95;
+    }
+    10% {
+        opacity: 0.9;
+    }
+    15% {
+        opacity: 0.93;
+    }
+    20% {
+        opacity: 0.98;
+    }
+    25% {
+        opacity: 0.94;
+    }
+    30% {
+        opacity: 0.99;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes float {
+    0%,
+    100% {
+        transform: translateY(0px) rotate(0deg);
+    }
+    50% {
+        transform: translateY(-20px) rotate(5deg);
+    }
+}
+
+@keyframes pulse-glow {
+    0%,
+    100% {
+        opacity: 0.5;
+        filter: blur(40px);
+    }
+    50% {
+        opacity: 0.8;
+        filter: blur(60px);
+    }
+}
+
+.arcade-grid {
+    background-size: 60px 60px;
+    background-image:
+        linear-gradient(
+            to right,
+            rgba(255, 255, 255, 0.03) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            to bottom,
+            rgba(255, 255, 255, 0.03) 1px,
+            transparent 1px
+        );
+}
+
+.scanline-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        transparent,
+        rgba(18, 16, 16, 0.05) 50%,
+        rgba(0, 0, 0, 0.05) 50%,
+        transparent
+    );
+    background-size: 100% 4px;
+    z-index: 100;
+    pointer-events: none;
+}
+
+.crt-effect {
+    animation: flicker 0.2s infinite;
+}
+
+.glass-morphism {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.text-glow-yellow {
+    text-shadow:
+        0 0 15px rgba(234, 179, 8, 0.6),
+        0 0 30px rgba(234, 179, 8, 0.4);
+}
+
+.text-glow-blue {
+    text-shadow:
+        0 0 15px rgba(59, 130, 246, 0.6),
+        0 0 30px rgba(59, 130, 246, 0.4);
+}
+
+.animate-float {
+    animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 4s ease-in-out infinite;
+}
+
+@keyframes spin-slow {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin-slow {
+    animation: spin-slow 8s linear infinite;
+}
+
+@keyframes bounce-x {
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+    50% {
+        transform: translateX(10px);
+    }
+}
+
+.animate-bounce-x {
+    animation: bounce-x 1s infinite;
+}
