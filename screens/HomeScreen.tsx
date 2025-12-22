@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   Trophy,
   Zap,
@@ -15,7 +16,15 @@ import {
 import { motion } from "framer-motion";
 
 export const HomeScreen: React.FC = () => {
-  const { setScreen, walletAddress } = useGame();
+  const { setScreen, walletAddress, connectWallet } = useGame();
+  const { ready, authenticated, user } = usePrivy();
+
+  // Sync Privy auth state with game context on load
+  useEffect(() => {
+    if (ready && authenticated && user?.wallet?.address && !walletAddress) {
+      connectWallet(user.wallet.address);
+    }
+  }, [ready, authenticated, user?.wallet?.address, walletAddress, connectWallet]);
 
   return (
     <div className="flex flex-col h-full items-center justify-between bg-[#020617] text-white relative overflow-hidden crt-effect">
