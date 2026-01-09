@@ -1,14 +1,36 @@
 import React from "react";
 import { useLineraWallet } from "../lib/useLineraWallet";
-import { Wallet, LogOut } from "lucide-react";
+import { Wallet, LogOut, Loader2, AlertCircle } from "lucide-react";
 
 export const WalletButton: React.FC = () => {
-  const { ready, authenticated, chainId, loading, login, logout } = useLineraWallet();
+  const { ready, authenticated, chainId, loading, error, login, logout, clearError } = useLineraWallet();
 
-  if (!ready || loading) {
+  if (!ready) {
     return (
-      <button className="px-4 py-2 bg-slate-700 rounded-xl text-white/50 text-sm">
-        {loading ? "Connecting..." : "Loading..."}
+      <button className="px-4 py-2 bg-slate-700 rounded-xl text-white/50 text-sm flex items-center gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading...
+      </button>
+    );
+  }
+
+  if (error) {
+    return (
+      <button
+        onClick={clearError}
+        className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-center gap-2"
+      >
+        <AlertCircle className="w-4 h-4" />
+        {error.slice(0, 20)}... (tap to retry)
+      </button>
+    );
+  }
+
+  if (loading) {
+    return (
+      <button className="px-4 py-2 bg-slate-700 rounded-xl text-white/50 text-sm flex items-center gap-2" disabled>
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Connecting...
       </button>
     );
   }

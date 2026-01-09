@@ -135,7 +135,7 @@ export const ModeSelectScreen: React.FC = () => {
             </h3>
             <p className="text-slate-400 text-sm max-w-md">
               Choose your competitive environment. Higher difficulty modes yield
-              greater XP rewards on the Movement network.
+              greater XP rewards on the Lineara network.
             </p>
           </motion.div>
 

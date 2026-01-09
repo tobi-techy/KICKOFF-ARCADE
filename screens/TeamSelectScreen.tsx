@@ -126,7 +126,7 @@ export const TeamSelectScreen: React.FC = () => {
                                 {team.name}
                               </h3>
                               <p className="text-[10px] text-slate-500 font-bold mt-1 tracking-widest uppercase">
-                                Movement Regional Div
+                                Linera Regional Div
                               </p>
                             </div>
                             <div className="text-right">

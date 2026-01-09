@@ -73,7 +73,7 @@ export const HomeScreen: React.FC = () => {
           <div className="hidden sm:flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10">
             <Globe className="w-3 h-3 text-blue-400 animate-spin-slow" />
             <span className="text-[9px] font-black text-white/80 uppercase tracking-widest">
-              Movement Testnet
+              Linera Testnet
             </span>
           </div>
         </div>

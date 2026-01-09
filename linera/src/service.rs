@@ -12,11 +12,11 @@ use linera_sdk::{
     views::View,
     Service, ServiceRuntime,
 };
-use kickoff_arcade::{LeaderboardEntry, Operation};
+use kickoff_arcade::{LeaderboardEntry, Operation, PlayerCard, PlayerProfile};
 use self::state::KickoffArcadeState;
 
 pub struct KickoffArcadeService {
-    state: KickoffArcadeState,
+    state: Arc<KickoffArcadeState>,
     runtime: Arc<ServiceRuntime<Self>>,
 }
 
@@ -34,17 +34,14 @@ impl Service for KickoffArcadeService {
             .await
             .expect("Failed to load state");
         KickoffArcadeService {
-            state,
+            state: Arc::new(state),
             runtime: Arc::new(runtime),
         }
     }
 
     async fn handle_query(&self, query: Self::Query) -> Self::QueryResponse {
-        let leaderboard = self.state.leaderboard.get().clone();
-        let total_minted = *self.state.total_minted.get();
-
         Schema::build(
-            QueryRoot { leaderboard, total_minted },
+            QueryRoot { state: self.state.clone() },
             Operation::mutation_root(self.runtime.clone()),
             EmptySubscription,
         )
@@ -55,20 +52,34 @@ impl Service for KickoffArcadeService {
 }
 
 struct QueryRoot {
-    leaderboard: Vec<LeaderboardEntry>,
-    total_minted: u64,
+    state: Arc<KickoffArcadeState>,
 }
 
 #[Object]
 impl QueryRoot {
+    /// Get player profile by address
+    async fn player_profile(&self, address: String) -> Option<PlayerProfile> {
+        self.state.players.get(&address).await.unwrap()
+    }
+
+    /// Check if player is registered
+    async fn is_registered(&self, address: String) -> bool {
+        self.state.players.get(&address).await.unwrap().is_some()
+    }
+
+    /// Get player's NFT cards
+    async fn player_cards(&self, owner: String) -> Vec<PlayerCard> {
+        self.state.cards.get(&owner).await.unwrap().unwrap_or_default()
+    }
+
     /// Get the leaderboard (top players by XP)
     async fn leaderboard(&self, count: Option<i32>) -> Vec<LeaderboardEntry> {
         let limit = count.unwrap_or(10) as usize;
-        self.leaderboard.iter().take(limit).cloned().collect()
+        self.state.leaderboard.get().iter().take(limit).cloned().collect()
     }
 
     /// Get total NFT cards minted
     async fn total_minted(&self) -> u64 {
-        self.total_minted
+        *self.state.total_minted.get()
     }
 }

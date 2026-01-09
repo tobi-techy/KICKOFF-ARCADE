@@ -1,13 +1,12 @@
-// Linera blockchain integration for Kickoff Arcade
-// Replaces the Movement blockchain integration
+// Linera blockchain integration via backend API
 
-// Application ID - UPDATE after deploying to testnet
+const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001";
+
 export const LINERA_CONFIG = {
   faucetUrl: "https://faucet.testnet-conway.linera.net",
   applicationId: "3a0710ee2a379bb1eab89c0891bdb806efea18a50fe0b675e11ca399a6572249",
 };
 
-// Types matching the Rust contract
 export interface PlayerProfile {
   xp: number;
   coins: number;
@@ -25,206 +24,94 @@ export interface LeaderboardEntry {
   level: number;
 }
 
-export interface PlayerCard {
-  id: number;
-  name: string;
-  position: string;
-  speed: number;
-  shooting: number;
-  passing: number;
-  defending: number;
-  rating: number;
-  rarity: number;
+// State
+let chainId: string | null = null;
+let signerKey: string | null = null;
+let initialized = false;
+
+const STORAGE = {
+  chainId: "linera_chain_id",
+  signerKey: "linera_signer_key",
+};
+
+export function getChainId(): string | null {
+  return chainId || localStorage.getItem(STORAGE.chainId);
 }
 
-// GraphQL queries
-const QUERIES = {
-  playerProfile: (address: string) => `
-    query {
-      playerProfile(address: "${address}") {
-        xp
-        coins
-        matchesPlayed
-        wins
-        losses
-        draws
-        level
-      }
-    }
-  `,
-  leaderboard: (count: number) => `
-    query {
-      leaderboard(count: ${count}) {
-        player
-        xp
-        wins
-        level
-      }
-    }
-  `,
-  playerCards: (owner: string) => `
-    query {
-      playerCards(owner: "${owner}") {
-        id
-        name
-        position
-        speed
-        shooting
-        passing
-        defending
-        rating
-        rarity
-      }
-    }
-  `,
-  isRegistered: (address: string) => `
-    query {
-      isRegistered(address: "${address}")
-    }
-  `,
-};
-
-// GraphQL mutations (schedule operations)
-const MUTATIONS = {
-  registerPlayer: `
-    mutation {
-      registerPlayer
-    }
-  `,
-  recordMatch: (homeScore: number, awayScore: number) => `
-    mutation {
-      recordMatch(homeScore: ${homeScore}, awayScore: ${awayScore})
-    }
-  `,
-  mintPlayer: (card: Omit<PlayerCard, "id" | "rating">) => `
-    mutation {
-      mintPlayer(
-        name: "${card.name}",
-        position: "${card.position}",
-        speed: ${card.speed},
-        shooting: ${card.shooting},
-        passing: ${card.passing},
-        defending: ${card.defending},
-        rarity: ${card.rarity}
-      )
-    }
-  `,
-};
-
-// Linera client wrapper
-let lineraClient: any = null;
-let chainId: string | null = null;
+async function api(endpoint: string, options?: RequestInit) {
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...options?.headers },
+  });
+  return res.json();
+}
 
 export async function initLineraClient() {
-  if (lineraClient) return lineraClient;
-
-  // Dynamic import for browser compatibility
+  if (initialized) return;
   const linera = await import("@linera/client");
-  // Initialize WASM module
-  if (typeof linera.initialize === 'function') {
-    await linera.initialize();
-  }
-
-  lineraClient = linera;
-  return lineraClient;
+  await linera.initialize();
+  initialized = true;
 }
 
 export async function connectWallet(): Promise<string | null> {
   try {
-    const client = await initLineraClient();
+    // Check for existing session
+    const existingChain = localStorage.getItem(STORAGE.chainId);
+    const existingKey = localStorage.getItem(STORAGE.signerKey);
+    
+    if (existingChain && existingKey) {
+      chainId = existingChain;
+      signerKey = existingKey;
+      return chainId;
+    }
 
-    // Request a chain from the faucet
-    const response = await fetch(LINERA_CONFIG.faucetUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: "mutation { claim }" }),
-    });
+    await initLineraClient();
+    const linera = await import("@linera/client");
+    const { signer: signerModule } = linera;
 
-    const data = await response.json();
-    chainId = data?.data?.claim?.chainId;
+    const faucet = new linera.Faucet(LINERA_CONFIG.faucetUrl);
+    const wallet = await faucet.createWallet();
+    const signer = signerModule.PrivateKey.createRandom();
+    const address = signer.address();
+
+    console.log("Claiming chain for:", address);
+    const claimedChain = await faucet.claimChain(wallet, address);
+    chainId = (claimedChain as any).chainId || claimedChain.toString();
+    console.log("Chain claimed:", chainId);
+
+    // Persist wallet data
+    localStorage.setItem(STORAGE.chainId, chainId);
+    // Note: In production, encrypt this or use a secure storage method
+    localStorage.setItem(STORAGE.signerKey, address);
+    signerKey = address;
 
     return chainId;
   } catch (error) {
-    console.error("Failed to connect wallet:", error);
+    console.error("Failed to connect:", error);
     return null;
   }
 }
 
-export function getChainId(): string | null {
-  return chainId;
+export function disconnectWallet(): void {
+  chainId = null;
+  signerKey = null;
+  localStorage.removeItem(STORAGE.chainId);
+  localStorage.removeItem(STORAGE.signerKey);
 }
 
-async function graphqlQuery(query: string): Promise<any> {
-  if (!chainId || !LINERA_CONFIG.applicationId) {
-    throw new Error("Wallet not connected or application not configured");
-  }
-
-  const client = await initLineraClient();
-  const response = await client.query(
-    chainId,
-    LINERA_CONFIG.applicationId,
-    query
-  );
-  return response;
-}
-
-async function graphqlMutation(mutation: string): Promise<any> {
-  if (!chainId || !LINERA_CONFIG.applicationId) {
-    throw new Error("Wallet not connected or application not configured");
-  }
-
-  const client = await initLineraClient();
-  const response = await client.mutate(
-    chainId,
-    LINERA_CONFIG.applicationId,
-    mutation
-  );
-  return response;
-}
-
-// Public API functions
-export async function getPlayerProfile(
-  address: string
-): Promise<PlayerProfile | null> {
-  try {
-    const result = await graphqlQuery(QUERIES.playerProfile(address));
-    return result?.data?.playerProfile || null;
-  } catch {
-    return null;
-  }
-}
-
-export async function getLeaderboard(count = 10): Promise<LeaderboardEntry[]> {
-  try {
-    const result = await graphqlQuery(QUERIES.leaderboard(count));
-    return result?.data?.leaderboard || [];
-  } catch {
-    return [];
-  }
-}
-
-export async function getPlayerCards(owner: string): Promise<PlayerCard[]> {
-  try {
-    const result = await graphqlQuery(QUERIES.playerCards(owner));
-    return result?.data?.playerCards || [];
-  } catch {
-    return [];
-  }
-}
-
-export async function isPlayerRegistered(address: string): Promise<boolean> {
-  try {
-    const result = await graphqlQuery(QUERIES.isRegistered(address));
-    return result?.data?.isRegistered || false;
-  } catch {
-    return false;
-  }
+export function isWalletPersisted(): boolean {
+  return !!(localStorage.getItem(STORAGE.chainId) && localStorage.getItem(STORAGE.signerKey));
 }
 
 export async function registerPlayer(): Promise<boolean> {
   try {
-    await graphqlMutation(MUTATIONS.registerPlayer);
-    return true;
+    const id = getChainId();
+    if (!id) return false;
+    const result = await api("/api/linera/register", {
+      method: "POST",
+      body: JSON.stringify({ chainId: id }),
+    });
+    return result.success;
   } catch {
     return false;
   }
@@ -235,28 +122,35 @@ export async function recordMatch(
   awayScore: number
 ): Promise<{ xpEarned: number; coinsEarned: number } | null> {
   try {
-    await graphqlMutation(MUTATIONS.recordMatch(homeScore, awayScore));
-
-    // Calculate rewards client-side (matches contract logic)
-    if (homeScore > awayScore) {
-      return { xpEarned: 100, coinsEarned: 50 };
-    } else if (homeScore < awayScore) {
-      return { xpEarned: 25, coinsEarned: 10 };
-    } else {
-      return { xpEarned: 50, coinsEarned: 20 };
-    }
+    const result = await api("/api/linera/match", {
+      method: "POST",
+      body: JSON.stringify({ homeScore, awayScore }),
+    });
+    return result.rewards || null;
   } catch {
     return null;
   }
 }
 
-export async function mintPlayerCard(
-  card: Omit<PlayerCard, "id" | "rating">
-): Promise<number | null> {
+export async function getPlayerProfile(address: string): Promise<PlayerProfile | null> {
   try {
-    const result = await graphqlMutation(MUTATIONS.mintPlayer(card));
-    return result?.data?.mintPlayer?.cardId || null;
+    const result = await api(`/api/linera/profile/${address}`);
+    return result.data || null;
   } catch {
     return null;
   }
+}
+
+export async function getLeaderboard(count = 10): Promise<LeaderboardEntry[]> {
+  try {
+    const result = await api(`/api/linera/leaderboard?count=${count}`);
+    return result.data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function isPlayerRegistered(address: string): Promise<boolean> {
+  const profile = await getPlayerProfile(address);
+  return profile !== null;
 }

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   connectWallet,
+  disconnectWallet,
   getChainId,
   getPlayerProfile,
   isPlayerRegistered,
+  isWalletPersisted,
   registerPlayer,
   recordMatch,
   PlayerProfile,
@@ -16,19 +18,23 @@ export function useLineraWallet() {
   const [chainId, setChainId] = useState<string | null>(null);
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if already connected
+    // Check if already connected (persisted session)
     const existingChainId = getChainId();
-    if (existingChainId) {
+    if (existingChainId && isWalletPersisted()) {
       setChainId(existingChainId);
       setAuthenticated(true);
+      // Fetch profile in background
+      getPlayerProfile(existingChainId).then(setProfile).catch(() => {});
     }
     setReady(true);
   }, []);
 
   const login = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const newChainId = await connectWallet();
       if (newChainId) {
@@ -44,49 +50,74 @@ export function useLineraWallet() {
         // Fetch profile
         const playerProfile = await getPlayerProfile(newChainId);
         setProfile(playerProfile);
+      } else {
+        setError("Failed to connect wallet");
       }
-    } catch (error) {
-      console.error("Login failed:", error);
+    } catch (err) {
+      console.error("Login failed:", err);
+      setError(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setLoading(false);
     }
   }, []);
 
   const logout = useCallback(() => {
+    disconnectWallet();
     setChainId(null);
     setAuthenticated(false);
     setProfile(null);
+    setError(null);
   }, []);
 
   const refreshProfile = useCallback(async () => {
     if (!chainId) return;
-    const playerProfile = await getPlayerProfile(chainId);
-    setProfile(playerProfile);
+    setLoading(true);
+    try {
+      const playerProfile = await getPlayerProfile(chainId);
+      setProfile(playerProfile);
+    } catch (err) {
+      setError("Failed to refresh profile");
+    } finally {
+      setLoading(false);
+    }
   }, [chainId]);
 
   const submitMatch = useCallback(
     async (homeScore: number, awayScore: number) => {
       if (!chainId) return null;
-      const result = await recordMatch(homeScore, awayScore);
-      if (result) {
-        await refreshProfile();
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await recordMatch(homeScore, awayScore);
+        if (result) {
+          await refreshProfile();
+        }
+        return result;
+      } catch (err) {
+        setError("Failed to record match");
+        return null;
+      } finally {
+        setLoading(false);
       }
-      return result;
     },
     [chainId, refreshProfile]
   );
+
+  const clearError = useCallback(() => setError(null), []);
 
   return {
     ready,
     authenticated,
     loading,
+    error,
     chainId,
-    address: chainId, // Alias for compatibility
+    address: chainId,
     profile,
     login,
     logout,
     refreshProfile,
     submitMatch,
+    clearError,
     chainConfig: {
       name: "Linera Testnet Conway",
       faucet: LINERA_CONFIG.faucetUrl,

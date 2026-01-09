@@ -114,7 +114,7 @@ export const WalletScreen: React.FC = () => {
                 AUTHENTICATE
               </h2>
               <p className="text-slate-400 text-sm font-bold uppercase tracking-[0.2em] mb-10 leading-relaxed">
-                Connect your identity to the Movement <br />
+                Connect your identity to the Linera <br />
                 Decentralized Network
               </p>
 
@@ -220,7 +220,7 @@ export const WalletScreen: React.FC = () => {
       </div>
 
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-[9px] text-slate-700 font-black uppercase tracking-[0.5em] whitespace-nowrap">
-        Movement Labs • Identity Protocol
+        Linera Labs • Identity Protocol
       </div>
     </div>
   );

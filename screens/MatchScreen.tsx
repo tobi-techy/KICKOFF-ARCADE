@@ -974,7 +974,7 @@ export const MatchScreen: React.FC = () => {
                 </p>
                 <div className="grid grid-cols-2 gap-y-2 gap-x-4">
                   <div className="flex flex-col text-left">
-                    <span className="text-[8px] text-white/20 uppercase font-black">Movement</span>
+                    <span className="text-[8px] text-white/20 uppercase font-black">Linera</span>
                     <span className="text-[10px] text-white/80 font-bold">WASD / ARROWS</span>
                   </div>
                   <div className="flex flex-col text-left">
