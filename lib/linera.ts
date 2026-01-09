@@ -4,7 +4,7 @@
 // Application ID - UPDATE after deploying to testnet
 export const LINERA_CONFIG = {
   faucetUrl: "https://faucet.testnet-conway.linera.net",
-  applicationId: "", // Set after deployment
+  applicationId: "3a0710ee2a379bb1eab89c0891bdb806efea18a50fe0b675e11ca399a6572249",
 };
 
 // Types matching the Rust contract

@@ -124,7 +124,7 @@ impl Contract for KickoffArcadeContract {
 }
 
 impl KickoffArcadeContract {
-    fn owner_id(&self) -> String {
+    fn owner_id(&mut self) -> String {
         self.runtime
             .authenticated_signer()
             .map(|o| o.to_string())
@@ -145,3 +145,4 @@ impl KickoffArcadeContract {
         self.state.leaderboard.set(entries);
     }
 }
+//0x6bab851d18a9421da35e3a91f9096eaf622f0446d2fd9dda03dcf124e8b464de

@@ -12,7 +12,7 @@ use linera_sdk::{
     views::View,
     Service, ServiceRuntime,
 };
-use kickoff_arcade::{LeaderboardEntry, Operation, PlayerCard, PlayerProfile};
+use kickoff_arcade::{LeaderboardEntry, Operation};
 use self::state::KickoffArcadeState;
 
 pub struct KickoffArcadeService {
