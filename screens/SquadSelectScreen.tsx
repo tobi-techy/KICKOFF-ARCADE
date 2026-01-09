@@ -94,7 +94,7 @@ export const SquadSelectScreen: React.FC = () => {
               )}
               <Shirt
                 className={`w-10 h-10 sm:w-14 sm:h-14 mb-1 drop-shadow-lg`}
-                style={{ color: player.color || selectedTeam?.color || "#fff" }}
+                style={{ color: player.color || selectedTeam?.primaryColor || "#fff" }}
               />
               <div
                 className={`absolute -bottom-3 bg-slate-950 px-3 py-0.5 rounded-full border-2 font-black text-sm z-20 ${
@@ -174,7 +174,7 @@ export const SquadSelectScreen: React.FC = () => {
             <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-lg w-fit border border-white/10">
               <div
                 className="w-3 h-3 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.5)]"
-                style={{ backgroundColor: selectedTeam?.color || "#3b82f6" }}
+                style={{ backgroundColor: selectedTeam?.primaryColor || "#3b82f6" }}
               />
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
                 {selectedTeam?.name}

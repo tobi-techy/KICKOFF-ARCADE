@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // Required headers for Linera WASM (SharedArrayBuffer)
+        headers: {
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
       },
       plugins: [react()],
       define: {
@@ -18,6 +23,19 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      // Linera client needs to be excluded from optimization
+      optimizeDeps: {
+        exclude: ['@linera/client'],
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              linera: ['@linera/client'],
+            },
+          },
+        },
+      },
     };
 });

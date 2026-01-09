@@ -1,30 +1,20 @@
 import React from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useLineraWallet } from "../lib/useLineraWallet";
 import { Wallet, LogOut } from "lucide-react";
 
 export const WalletButton: React.FC = () => {
-  let privyState = { ready: false, authenticated: false, user: null as any, login: () => {}, logout: () => {} };
-  
-  try {
-    privyState = usePrivy();
-  } catch (e) {
-    // Privy not available
-    return null;
-  }
+  const { ready, authenticated, chainId, loading, login, logout } = useLineraWallet();
 
-  const { ready, authenticated, user, login, logout } = privyState;
-
-  if (!ready) {
+  if (!ready || loading) {
     return (
       <button className="px-4 py-2 bg-slate-700 rounded-xl text-white/50 text-sm">
-        Loading...
+        {loading ? "Connecting..." : "Loading..."}
       </button>
     );
   }
 
-  if (authenticated && user) {
-    const address = user.wallet?.address;
-    const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Connected";
+  if (authenticated && chainId) {
+    const shortAddress = `${chainId.slice(0, 6)}...${chainId.slice(-4)}`;
 
     return (
       <div className="flex items-center gap-2">

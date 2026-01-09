@@ -68,7 +68,7 @@ export const RewardsScreen: React.FC = () => {
             Network
           </div>
           <div className="text-xs font-black text-blue-400 italic mt-1">
-            MOVEMENT_MAIN_BETA
+            LINERA_CONWAY
           </div>
         </div>
       </div>

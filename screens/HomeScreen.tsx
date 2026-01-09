@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
-import { usePrivy } from "@privy-io/react-auth";
+import { useLineraWallet } from "../lib/useLineraWallet";
 import {
   Trophy,
   Zap,
@@ -17,14 +17,14 @@ import { motion } from "framer-motion";
 
 export const HomeScreen: React.FC = () => {
   const { setScreen, walletAddress, connectWallet } = useGame();
-  const { ready, authenticated, user } = usePrivy();
+  const { ready, authenticated, chainId } = useLineraWallet();
 
-  // Sync Privy auth state with game context on load
+  // Sync Linera auth state with game context on load
   useEffect(() => {
-    if (ready && authenticated && user?.wallet?.address && !walletAddress) {
-      connectWallet(user.wallet.address);
+    if (ready && authenticated && chainId && !walletAddress) {
+      connectWallet(chainId);
     }
-  }, [ready, authenticated, user?.wallet?.address, walletAddress, connectWallet]);
+  }, [ready, authenticated, chainId, walletAddress, connectWallet]);
 
   return (
     <div className="flex flex-col h-full items-center justify-between bg-[#020617] text-white relative overflow-hidden crt-effect">
@@ -76,14 +76,6 @@ export const HomeScreen: React.FC = () => {
               Movement Testnet
             </span>
           </div>
-          {/*{walletAddress && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/30 rounded-full">
-              <Wallet className="w-3 h-3 text-emerald-400" />
-              <span className="text-[10px] font-bold text-emerald-400">
-                {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-              </span>
-            </div>
-          )}*/}
         </div>
       </motion.div>
 

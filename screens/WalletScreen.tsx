@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
-import { usePrivy } from "@privy-io/react-auth";
+import { useLineraWallet } from "../lib/useLineraWallet";
 import {
   ChevronLeft,
   Wallet,
@@ -17,32 +17,32 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export const WalletScreen: React.FC = () => {
   const { setScreen, connectWallet } = useGame();
-  const { ready, authenticated, user, login } = usePrivy();
+  const { ready, authenticated, chainId, login } = useLineraWallet();
   const [isConnecting, setIsConnecting] = useState(false);
   const [terminalStep, setTerminalStep] = useState(0);
   const [connectionComplete, setConnectionComplete] = useState(false);
 
   const logs = [
     "INITIALIZING SECURE PROTOCOL...",
-    "HANDSHAKING WITH MOVEMENT NETWORK...",
+    "HANDSHAKING WITH LINERA NETWORK...",
     "VERIFYING NODE INTEGRITY...",
     "AWAITING USER SIGNATURE...",
   ];
 
   // Watch for successful authentication
   useEffect(() => {
-    if (isConnecting && authenticated && user?.wallet?.address) {
-      // User authenticated via Privy, complete the flow
+    if (isConnecting && authenticated && chainId) {
+      // User authenticated via Linera, complete the flow
       setTerminalStep(logs.length);
       setTimeout(() => {
-        connectWallet(user.wallet!.address);
+        connectWallet(chainId);
         setConnectionComplete(true);
         setTimeout(() => {
           setScreen(ScreenName.REWARDS);
         }, 1000);
       }, 500);
     }
-  }, [authenticated, user?.wallet?.address, isConnecting]);
+  }, [authenticated, chainId, isConnecting]);
 
   useEffect(() => {
     if (isConnecting && terminalStep < logs.length - 1) {
@@ -196,7 +196,7 @@ export const WalletScreen: React.FC = () => {
                     className="flex items-center gap-3 text-[10px] text-green-400 font-bold"
                   >
                     <CheckCircle className="w-4 h-4" />
-                    CONNECTION ESTABLISHED - {user?.wallet?.address?.slice(0, 8)}...
+                    CONNECTION ESTABLISHED - {chainId?.slice(0, 8)}...
                   </motion.div>
                 )}
               </div>
