@@ -14,6 +14,21 @@ const FIELD_WIDTH = 200;
 const FIELD_HEIGHT = 120;
 const PLAYER_SPEED = 5;
 
+// Helper to get direction from velocity
+function getDirection(vx: number, vy: number): string {
+  if (Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1) return "south";
+  const angle = Math.atan2(vy, vx) * (180 / Math.PI);
+  if (angle >= -22.5 && angle < 22.5) return "east";
+  if (angle >= 22.5 && angle < 67.5) return "south-east";
+  if (angle >= 67.5 && angle < 112.5) return "south";
+  if (angle >= 112.5 && angle < 157.5) return "south-west";
+  if (angle >= 157.5 || angle < -157.5) return "west";
+  if (angle >= -157.5 && angle < -112.5) return "north-west";
+  if (angle >= -112.5 && angle < -67.5) return "north";
+  if (angle >= -67.5 && angle < -22.5) return "north-east";
+  return "south";
+}
+
 interface GameObject {
   id: string;
   x: number;
@@ -901,12 +916,14 @@ export const MatchScreen: React.FC = () => {
               <div
                 key={p.id}
                 ref={(el) => { playerDivsRef.current[p.id] = el; }}
-                className="absolute -ml-5 -mt-12"
+                className="absolute -ml-12 -mt-12"
               >
                 <PixelPlayer
                   id={p.id}
                   color={p.color || "#444"}
                   role={p.role}
+                  position={p.role?.toUpperCase() as "GK" | "DEF" | "MID" | "ATT"}
+                  direction={getDirection(p.vx, p.vy)}
                   isActive={p.id === uiState.activePlayerId}
                   isOpponent={p.id === uiState.activeOpponentId}
                 />

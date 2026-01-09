@@ -206,7 +206,7 @@ export const HomeScreen: React.FC = () => {
             Region: Global-North
           </div>
           <div className="px-3 py-1 bg-slate-800 rounded-full text-[9px] text-slate-500 font-mono border border-slate-700 mt-2">
-            v1.0.4-ALPHA • MOVEMENT
+            v1.0.4-ALPHA • Linera
           </div>
         </div>
       </div>
