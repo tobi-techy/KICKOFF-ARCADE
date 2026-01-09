@@ -1,9 +1,5 @@
 # Kickoff Arcade - Linera Buildathon
 
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 A real-time football arcade game built on **Linera blockchain**, featuring on-chain rewards, leaderboards, and player NFT cards.
 
 ## 🎮 Features
