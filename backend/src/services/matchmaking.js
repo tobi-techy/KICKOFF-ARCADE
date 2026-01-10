@@ -80,6 +80,23 @@ class MatchmakingService {
     return match;
   }
 
+  // Create match directly (for lobby-based matches)
+  createMatch(matchId, players, wagerAmount = 0) {
+    const match = {
+      id: matchId,
+      players,
+      state: "playing",
+      score: { home: 0, away: 0 },
+      wagerAmount,
+      createdAt: Date.now(),
+      startedAt: Date.now(),
+      events: [],
+    };
+
+    activeMatches.set(matchId, match);
+    return match;
+  }
+
   // Get match by ID
   getMatch(matchId) {
     return activeMatches.get(matchId);

@@ -26,6 +26,8 @@ pub enum Operation {
     RegisterPlayer,
     /// Record a match result
     RecordMatch { home_score: u8, away_score: u8 },
+    /// Forfeit/quit any match - XP penalty
+    ForfeitMatch,
     /// Mint a player NFT card
     MintPlayer {
         name: String,
@@ -36,6 +38,27 @@ pub enum Operation {
         defending: u8,
         rarity: u8,
     },
+    /// Create a wager lobby (host stakes coins)
+    CreateWager { lobby_id: String, amount: u64 },
+    /// Accept a wager (guest stakes matching coins)
+    AcceptWager { lobby_id: String },
+    /// Cancel a wager (only host, before accepted)
+    CancelWager { lobby_id: String },
+    /// Resolve wager and distribute winnings
+    ResolveWager { lobby_id: String, winner: String, home_score: u8, away_score: u8 },
+    /// Forfeit a wager match - loses stake + XP penalty
+    ForfeitWager { lobby_id: String },
+}
+
+/// Wager/Escrow data
+#[derive(Clone, Debug, Default, Deserialize, Serialize, SimpleObject)]
+pub struct Wager {
+    pub lobby_id: String,
+    pub host: String,
+    pub guest: String,
+    pub amount: u64,
+    pub status: u8, // 0=pending, 1=accepted, 2=resolved, 3=cancelled
+    pub winner: String,
 }
 
 /// Player profile data

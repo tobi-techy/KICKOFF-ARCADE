@@ -39,11 +39,18 @@ class LineraService {
     this.serviceProcess.stdout.on("data", (data) => {
       const msg = data.toString();
       console.log("[linera-service]", msg);
-      if (msg.includes("GraphiQL IDE")) this.isReady = true;
+      if (msg.includes("GraphiQL") || msg.includes("localhost:8080")) {
+        this.isReady = true;
+      }
     });
 
     this.serviceProcess.stderr.on("data", (data) => {
-      console.error("[linera-service]", data.toString());
+      const msg = data.toString();
+      console.log("[linera-service]", msg);
+      // Linera logs to stderr, check for ready signal there too
+      if (msg.includes("GraphiQL") || msg.includes("localhost:8080")) {
+        this.isReady = true;
+      }
     });
 
     this.serviceProcess.on("exit", (code) => {
@@ -53,7 +60,7 @@ class LineraService {
     });
 
     // Wait for service to be ready
-    await this.waitForReady(10000);
+    await this.waitForReady(15000);
     console.log(`Linera service started on port ${this.servicePort}`);
   }
 
@@ -200,6 +207,61 @@ class LineraService {
         )
       }
     `);
+  }
+
+  async createWager(lobbyId, amount) {
+    return this.mutate(`
+      mutation {
+        createWager(lobbyId: "${lobbyId}", amount: ${amount})
+      }
+    `);
+  }
+
+  async acceptWager(lobbyId) {
+    return this.mutate(`
+      mutation {
+        acceptWager(lobbyId: "${lobbyId}")
+      }
+    `);
+  }
+
+  async cancelWager(lobbyId) {
+    return this.mutate(`
+      mutation {
+        cancelWager(lobbyId: "${lobbyId}")
+      }
+    `);
+  }
+
+  async resolveWager(lobbyId, winner, homeScore, awayScore) {
+    return this.mutate(`
+      mutation {
+        resolveWager(lobbyId: "${lobbyId}", winner: "${winner}", homeScore: ${homeScore}, awayScore: ${awayScore})
+      }
+    `);
+  }
+
+  async getWager(lobbyId) {
+    return this.query(`
+      query {
+        wager(lobbyId: "${lobbyId}") {
+          lobbyId
+          host
+          guest
+          amount
+          status
+          winner
+        }
+      }
+    `);
+  }
+
+  async forfeitMatch() {
+    return this.mutate(`mutation { forfeitMatch }`);
+  }
+
+  async forfeitWager(lobbyId) {
+    return this.mutate(`mutation { forfeitWager(lobbyId: "${lobbyId}") }`);
   }
 
   async getWalletInfo() {

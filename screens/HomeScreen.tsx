@@ -188,11 +188,24 @@ export const HomeScreen: React.FC = () => {
               Connect Wallet To Sync Progress
             </motion.button>
           ) : (
-            <div className="w-full py-4 glass-morphism rounded-2xl border border-green-500/30 flex items-center justify-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_#22c55e]" />
-              <span className="text-[10px] font-arcade font-bold text-green-400 uppercase tracking-widest">
-                ID: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-              </span>
+            <div className="flex gap-3">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setScreen(ScreenName.REWARDS)}
+                className="flex-1 py-4 glass-morphism rounded-2xl border border-yellow-500/30 flex items-center justify-center gap-2 hover:bg-yellow-500/10 transition-all"
+              >
+                <Trophy className="w-4 h-4 text-yellow-400" />
+                <span className="text-[10px] font-arcade font-bold text-yellow-400 uppercase tracking-widest">
+                  Rewards
+                </span>
+              </motion.button>
+              <div className="flex-1 py-4 glass-morphism rounded-2xl border border-green-500/30 flex items-center justify-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_#22c55e]" />
+                <span className="text-[10px] font-arcade font-bold text-green-400 uppercase tracking-widest">
+                  {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                </span>
+              </div>
             </div>
           )}
         </div>

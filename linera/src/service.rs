@@ -12,7 +12,7 @@ use linera_sdk::{
     views::View,
     Service, ServiceRuntime,
 };
-use kickoff_arcade::{LeaderboardEntry, Operation, PlayerCard, PlayerProfile};
+use kickoff_arcade::{LeaderboardEntry, Operation, PlayerCard, PlayerProfile, Wager};
 use self::state::KickoffArcadeState;
 
 pub struct KickoffArcadeService {
@@ -81,5 +81,10 @@ impl QueryRoot {
     /// Get total NFT cards minted
     async fn total_minted(&self) -> u64 {
         *self.state.total_minted.get()
+    }
+
+    /// Get wager by lobby ID
+    async fn wager(&self, lobby_id: String) -> Option<Wager> {
+        self.state.wagers.get(&lobby_id).await.unwrap()
     }
 }

@@ -81,4 +81,80 @@ router.get("/wallet", async (req, res) => {
   }
 });
 
+// Create wager
+router.post("/wager/create", async (req, res) => {
+  try {
+    const { lobbyId, amount } = req.body;
+    const result = await lineraService.createWager(lobbyId, amount);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Accept wager
+router.post("/wager/accept", async (req, res) => {
+  try {
+    const { lobbyId } = req.body;
+    const result = await lineraService.acceptWager(lobbyId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Cancel wager
+router.post("/wager/cancel", async (req, res) => {
+  try {
+    const { lobbyId } = req.body;
+    const result = await lineraService.cancelWager(lobbyId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Resolve wager
+router.post("/wager/resolve", async (req, res) => {
+  try {
+    const { lobbyId, winner, homeScore, awayScore } = req.body;
+    const result = await lineraService.resolveWager(lobbyId, winner, homeScore, awayScore);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get wager
+router.get("/wager/:lobbyId", async (req, res) => {
+  try {
+    const { lobbyId } = req.params;
+    const result = await lineraService.getWager(lobbyId);
+    res.json({ success: true, data: result.data?.wager });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Forfeit any match (XP + coin penalty)
+router.post("/forfeit", async (req, res) => {
+  try {
+    const result = await lineraService.forfeitMatch();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Forfeit wager match (loses stake + XP penalty)
+router.post("/wager/forfeit", async (req, res) => {
+  try {
+    const { lobbyId } = req.body;
+    const result = await lineraService.forfeitWager(lobbyId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

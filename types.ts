@@ -9,6 +9,7 @@ export enum ScreenName {
   REWARDS = "REWARDS",
   LEADERBOARD = "LEADERBOARD",
   PROFILE = "PROFILE",
+  MULTIPLAYER_LOBBY = "MULTIPLAYER_LOBBY",
 }
 
 export enum GameMode {
@@ -47,6 +48,21 @@ export interface MatchStats {
   outcome: "WIN" | "LOSS" | "DRAW";
   xpEarned: number;
   timestamp?: number;
+  wager?: number;
+  winnings?: number;
+  matchId?: string;
+}
+
+export interface LobbyData {
+  lobbyId: string;
+  hostId: string;
+  hostName: string;
+  hostTeam: string;
+  wagerAmount: number;
+  guestId?: string;
+  guestName?: string;
+  guestTeam?: string;
+  status: "waiting" | "ready" | "playing" | "finished";
 }
 
 export interface GameState {

@@ -35,7 +35,18 @@ class MultiplayerClient {
     this.socket.on("disconnect", () => console.log("Multiplayer disconnected"));
 
     // Forward events to listeners
-    const events = ["queue:joined", "match:found", "match:start", "match:sync", "match:score", "match:ended", "match:event"];
+    const events = [
+      "queue:joined", 
+      "match:found", 
+      "match:start", 
+      "match:sync", 
+      "match:score", 
+      "match:ended", 
+      "match:event",
+      "lobby:updated",
+      "lobby:info",
+      "lobby:error",
+    ];
     events.forEach((event) => {
       this.socket?.on(event, (data) => this.emit(event, data));
     });
@@ -53,7 +64,12 @@ class MultiplayerClient {
     return () => this.listeners.get(event)?.delete(callback);
   }
 
-  private emit(event: string, data: any) {
+  emit(event: string, data?: any) {
+    // If socket event, send to server
+    if (this.socket?.connected && event.includes(":") && !event.startsWith("match:sync")) {
+      this.socket.emit(event, data);
+    }
+    // Also notify local listeners
     this.listeners.get(event)?.forEach((cb) => cb(data));
   }
 

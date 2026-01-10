@@ -7,7 +7,7 @@ import { PixelPlayer } from "../components/PixelPlayer";
 import { sounds } from "../utils/sounds";
 import { GamePhysics, KickOptions } from "../utils/physics";
 import { computeAIMove, resetAIStates, AIPlayer } from "../utils/ai";
-import { Timer, Pause, Play, RefreshCw, LogOut, Users, Zap, Target, Trophy } from "lucide-react";
+import { Timer, Pause, Play, RefreshCw, LogOut, Users, Zap, Target, Trophy, ArrowLeftRight } from "lucide-react";
 
 // --- Constants ---
 const FIELD_WIDTH = 200;
@@ -106,6 +106,7 @@ export const MatchScreen: React.FC = () => {
     awayScore: 0,
     timeLeft: matchDuration / 2,
     eventText: "",
+    commentary: "",
     isPaused: false,
     activePlayerId: "h_att1",
     activeOpponentId: "",
@@ -113,6 +114,7 @@ export const MatchScreen: React.FC = () => {
     stamina: 100,
     half: 1 as 1 | 2,
     extraTime: 0,
+    screenShake: false,
   });
 
   const updateScale = useCallback(() => {
@@ -148,18 +150,34 @@ export const MatchScreen: React.FC = () => {
       timeLeft: matchDuration / 2,
       isPaused: false,
       eventText: "RESTART!",
+      commentary: "",
       activePlayerId: "h_att1",
       activeOpponentId: "",
       kickPower: 0,
       stamina: 100,
       half: 1,
       extraTime: 0,
+      screenShake: false,
     });
     state.isPlaying = true;
     setTimeout(() => setUiState((prev) => ({ ...prev, eventText: "" })), 1000);
   };
 
-  const handleQuit = () => {
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+
+  const handleQuit = async () => {
+    // Show confirmation first
+    setShowQuitConfirm(true);
+  };
+
+  const confirmQuit = async () => {
+    // Record forfeit on-chain (penalty applied)
+    try {
+      const { forfeitMatch } = await import("../lib/linera");
+      await forfeitMatch();
+    } catch (e) {
+      console.error("Failed to record forfeit:", e);
+    }
     setScreen(ScreenName.HOME);
   };
 
@@ -215,6 +233,7 @@ export const MatchScreen: React.FC = () => {
 
   const handleGoal = (team: "home" | "away") => {
     const state = gameState.current;
+    const physics = physicsRef.current;
     if (!state.isPlaying) return;
 
     if (team === "home") state.score.home++;
@@ -223,15 +242,30 @@ export const MatchScreen: React.FC = () => {
     state.isPlaying = false;
     state.ball.vx = 0;
     state.ball.vy = 0;
+    
+    // Immediately stop ball in physics too
+    if (physics) {
+      physics.placeBall(FIELD_WIDTH / 2, FIELD_HEIGHT / 2);
+    }
 
     sounds.goal();
+
+    // Screen shake + commentary
+    const comments = team === "home" 
+      ? ["WHAT A GOAL!", "BRILLIANT!", "UNSTOPPABLE!", "GET IN!"]
+      : ["Oh no!", "Defensive error!", "They've scored!"];
+    const comment = comments[Math.floor(Math.random() * comments.length)];
 
     setUiState((prev) => ({
       ...prev,
       homeScore: state.score.home,
       awayScore: state.score.away,
       eventText: team === "home" ? "GOAL!" : "CONCEDED!",
+      commentary: comment,
+      screenShake: true,
     }));
+
+    setTimeout(() => setUiState(prev => ({ ...prev, screenShake: false })), 500);
 
     setTimeout(() => {
       resetPositions(team);
@@ -242,7 +276,7 @@ export const MatchScreen: React.FC = () => {
             state.isPlaying = true;
           }, 100);
         }
-        return { ...prev, eventText: "" };
+        return { ...prev, eventText: "", commentary: "" };
       });
     }, 1500);
   };
@@ -273,11 +307,52 @@ export const MatchScreen: React.FC = () => {
             physics.kick({ type: "pass", power: 0.8, targetAngle: kickAngle + (Math.random() - 0.5) * 0.5 });
           }, 300);
         }
-      } else {
-        // Throw-in or corner - place ball at position
+      } else if (type === "corner") {
+        // Place ball at corner
         physics.placeBall(x, y);
         state.ball.x = x;
         state.ball.y = y;
+        
+        // Move a midfielder to take the corner
+        const taker = state.players.find(p => p.team === team && p.role === "mid");
+        if (taker) {
+          const takerX = x + (team === "home" ? -3 : 3);
+          const takerY = y + (y < FIELD_HEIGHT / 2 ? 3 : -3);
+          physics.resetPlayer(taker.id, takerX, takerY);
+          taker.x = takerX;
+          taker.y = takerY;
+        }
+        
+        // Auto-cross the ball into the box after delay
+        setTimeout(() => {
+          const targetX = team === "home" ? FIELD_WIDTH - 30 : 30;
+          const targetY = FIELD_HEIGHT / 2 + (Math.random() - 0.5) * 20;
+          const angle = Math.atan2(targetY - y, targetX - x);
+          physics.kick({ type: "pass", power: 0.7, targetAngle: angle });
+        }, 500);
+      } else {
+        // Throw-in - place ball and move nearest player
+        physics.placeBall(x, y);
+        state.ball.x = x;
+        state.ball.y = y;
+        
+        // Move nearest teammate to take throw-in
+        const teammates = state.players.filter(p => p.team === team && p.role !== "gk");
+        const nearest = teammates.sort((a, b) => 
+          Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)
+        )[0];
+        if (nearest) {
+          const takerX = x + (team === "home" ? -3 : 3);
+          physics.resetPlayer(nearest.id, takerX, y);
+          nearest.x = takerX;
+          nearest.y = y;
+        }
+        
+        // Auto-throw after delay
+        setTimeout(() => {
+          const inwardAngle = team === "home" ? 0.3 : Math.PI - 0.3;
+          physics.kick({ type: "pass", power: 0.4, targetAngle: inwardAngle });
+        }, 400);
       }
       state.ball.vx = 0;
       state.ball.vy = 0;
@@ -333,6 +408,18 @@ export const MatchScreen: React.FC = () => {
         state.isPlaying = true;
       }, 1500);
     }, 2500);
+  };
+
+  // Switch to next home player manually
+  const switchPlayer = () => {
+    const state = gameState.current;
+    const homePlayers = state.players.filter(p => p.team === "home" && p.role !== "gk");
+    const currentIdx = homePlayers.findIndex(p => p.isUser);
+    const nextIdx = (currentIdx + 1) % homePlayers.length;
+    
+    homePlayers.forEach((p, i) => { p.isUser = i === nextIdx; });
+    uiRefs.current.activePlayerId = homePlayers[nextIdx].id;
+    setUiState(prev => ({ ...prev, activePlayerId: homePlayers[nextIdx].id }));
   };
 
   // Start charging a kick
@@ -686,6 +773,11 @@ export const MatchScreen: React.FC = () => {
       if (e.code === "KeyE") {
         performSlideTackle();
       }
+      // Player switch
+      if (e.code === "Tab") {
+        e.preventDefault();
+        switchPlayer();
+      }
       if (e.code === "Escape") togglePause();
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") sprintRef.current = true;
     };
@@ -776,21 +868,21 @@ export const MatchScreen: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-slate-950 relative select-none touch-none overflow-hidden font-arcade">
       {/* Scoreboard & Timer Overlay */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30 bg-black/60 backdrop-blur-md px-6 py-2 rounded-full border-2 border-white/10 shadow-2xl">
-        <div className="flex items-center gap-3">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-4 sm:gap-6 z-30 bg-black/60 backdrop-blur-md px-4 sm:px-6 py-2 rounded-full border-2 border-white/10 shadow-2xl">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div
-            className="w-8 h-8 rounded-full border-2 border-white"
+            className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 border-white"
             style={{ backgroundColor: selectedTeam?.primaryColor || "#3b82f6" }}
           ></div>
-          <span className="text-2xl font-black text-white">
+          <span className="text-xl sm:text-2xl font-black text-white">
             {uiState.homeScore}
           </span>
         </div>
 
-        <div className="flex flex-col items-center min-w-20">
+        <div className="flex flex-col items-center min-w-16 sm:min-w-20">
           <div className="flex items-center gap-1 text-yellow-400">
-            <Timer className="w-4 h-4" />
-            <span className="text-xl font-bold tabular-nums">
+            <Timer className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="text-lg sm:text-xl font-bold tabular-nums">
               {Math.floor(uiState.timeLeft / 60)}:
               {(uiState.timeLeft % 60).toString().padStart(2, "0")}
               {uiState.extraTime > 0 && uiState.timeLeft <= 0 && (
@@ -831,6 +923,7 @@ export const MatchScreen: React.FC = () => {
           <span>Enter</span><span className="text-white/50">Shoot</span>
           <span>Q</span><span className="text-white/50">Through</span>
           <span>E</span><span className="text-white/50">Tackle</span>
+          <span>Tab</span><span className="text-white/50">Switch</span>
           <span>Shift</span><span className="text-white/50">Sprint</span>
         </div>
       </div>
@@ -869,13 +962,13 @@ export const MatchScreen: React.FC = () => {
         ref={containerRef}
         className="flex-1 relative overflow-hidden flex items-center justify-center"
       >
-        {/* Field */}
+        {/* Field - rotated 90deg on mobile for portrait mode */}
         <div
           style={{
             width: FIELD_WIDTH * scaleRef.current,
             height: FIELD_HEIGHT * scaleRef.current,
           }}
-          className="relative bg-emerald-600 rounded-lg shadow-[0_0_100px_rgba(0,0,0,0.5)] border-4 border-white/20 overflow-hidden"
+          className={`relative bg-emerald-600 rounded-lg shadow-[0_0_100px_rgba(0,0,0,0.5)] border-4 border-white/20 overflow-hidden transition-transform ${uiState.screenShake ? "animate-shake" : ""} sm:rotate-0 rotate-90 origin-center`}
         >
           {/* Grass Pattern */}
           <div className="absolute inset-0 opacity-10 bg-[repeating-linear-gradient(90deg,transparent,transparent_50px,#000_50px,#000_100px)]"></div>
@@ -926,6 +1019,7 @@ export const MatchScreen: React.FC = () => {
                   direction={getDirection(p.vx, p.vy)}
                   isActive={p.id === uiState.activePlayerId}
                   isOpponent={p.id === uiState.activeOpponentId}
+                  isMoving={Math.abs(p.vx) > 0.5 || Math.abs(p.vy) > 0.5}
                 />
               </div>
             ))}
@@ -933,9 +1027,14 @@ export const MatchScreen: React.FC = () => {
             {/* Ball */}
             <div
               ref={ballDivRef}
-              className="absolute w-7 h-7 -ml-3.5 -mt-3.5 bg-white rounded-full shadow-md z-40 flex items-center justify-center border-2 border-slate-400"
+              className="absolute -ml-3.5 -mt-3.5 z-40"
             >
-              <div className="w-full h-full rounded-full bg-[radial-gradient(circle_at_30%_30%,#fff,#ddd_60%,#999)] shadow-inner"></div>
+              {/* Ball shadow */}
+              <div className="absolute top-6 left-1/2 -translate-x-1/2 w-5 h-2 bg-black/30 rounded-full blur-sm" />
+              {/* Ball */}
+              <div className="w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center border-2 border-slate-400">
+                <div className="w-full h-full rounded-full bg-[radial-gradient(circle_at_30%_30%,#fff,#ddd_60%,#999)] shadow-inner"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -947,11 +1046,20 @@ export const MatchScreen: React.FC = () => {
               initial={{ scale: 0.5, opacity: 0, y: 50 }}
               animate={{ scale: 1.5, opacity: 1, y: 0 }}
               exit={{ scale: 2, opacity: 0 }}
-              className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+              className="absolute inset-0 flex flex-col items-center justify-center z-50 pointer-events-none"
             >
               <h1 className="text-8xl font-black text-yellow-400 drop-shadow-[0_8px_0_rgba(0,0,0,1)] italic tracking-tighter">
                 {uiState.eventText}
               </h1>
+              {uiState.commentary && (
+                <motion.p 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-2xl text-white/90 font-bold mt-2 drop-shadow-lg"
+                >
+                  {uiState.commentary}
+                </motion.p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1047,11 +1155,53 @@ export const MatchScreen: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Landscape Controls: Side Overlays */}
-      <div className="absolute bottom-6 left-6 z-40 md:left-12">
+      {/* Quit Confirmation Modal */}
+      <AnimatePresence>
+        {showQuitConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-slate-900 border-2 border-red-500/30 p-8 rounded-2xl shadow-2xl w-full max-w-sm text-center"
+            >
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+                <LogOut className="w-8 h-8 text-red-500" />
+              </div>
+              <h2 className="text-2xl font-black text-white mb-2">QUIT MATCH?</h2>
+              <p className="text-slate-400 text-sm mb-6">
+                Quitting will count as a <span className="text-red-400 font-bold">forfeit</span>. 
+                You will lose <span className="text-red-400 font-bold">50 XP</span> and <span className="text-red-400 font-bold">25 coins</span>.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowQuitConfirm(false)}
+                  className="flex-1 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold transition-all"
+                >
+                  CANCEL
+                </button>
+                <button
+                  onClick={confirmQuit}
+                  className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all"
+                >
+                  QUIT
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Controls - Portrait on mobile, Landscape on desktop */}
+      {/* Joystick - left side on desktop, bottom-left on mobile */}
+      <div className="absolute bottom-4 left-4 z-40 sm:bottom-6 sm:left-12">
         <div className="p-2 bg-black/30 backdrop-blur-sm rounded-full border border-white/10">
           <Joystick
-            size={120}
+            size={100}
             onMove={(vec) => {
               if (activeKeys.current.size === 0) joystickRef.current = vec;
             }}
@@ -1084,67 +1234,79 @@ export const MatchScreen: React.FC = () => {
         </div>
       </div>
 
-      <div className="absolute bottom-6 right-6 z-40 md:right-12 flex gap-3">
+      {/* Action buttons - right side */}
+      <div className="absolute bottom-4 right-4 z-40 sm:bottom-6 sm:right-12 flex flex-col sm:flex-row gap-2 sm:gap-3">
+        {/* Switch player button */}
+        <div className="flex flex-col items-center">
+          <button
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-purple-600 border-b-4 border-purple-900 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center"
+            onPointerDown={switchPlayer}
+          >
+            <ArrowLeftRight className="w-4 h-4 text-white" />
+          </button>
+          <span className="text-[7px] sm:text-[8px] text-white/50 mt-1">SWITCH</span>
+        </div>
+
         {/* Tackle button */}
         <div className="flex flex-col items-center">
           <button
-            className="w-14 h-14 rounded-full bg-orange-600 border-b-6 border-orange-900 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center"
+            className="w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-orange-600 border-b-4 sm:border-b-6 border-orange-900 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center"
             onPointerDown={performSlideTackle}
           >
-            <Target className="w-5 h-5 text-white" />
+            <Target className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
           </button>
-          <span className="text-[8px] text-white/50 mt-1">TACKLE</span>
+          <span className="text-[7px] sm:text-[8px] text-white/50 mt-1">TACKLE</span>
         </div>
         
         {/* Sprint button */}
         <div className="flex flex-col items-center">
           <button
-            className={`w-14 h-14 rounded-full border-b-6 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center ${sprintRef.current ? 'bg-green-400 border-green-700' : 'bg-green-600 border-green-900'}`}
+            className={`w-11 h-11 sm:w-14 sm:h-14 rounded-full border-b-4 sm:border-b-6 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center ${sprintRef.current ? 'bg-green-400 border-green-700' : 'bg-green-600 border-green-900'}`}
             onPointerDown={() => sprintRef.current = true}
             onPointerUp={() => sprintRef.current = false}
             onPointerLeave={() => sprintRef.current = false}
           >
-            <Zap className="w-5 h-5 text-white fill-white" />
+            <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-white fill-white" />
           </button>
-          <span className="text-[8px] text-white/50 mt-1">SPRINT</span>
+          <span className="text-[7px] sm:text-[8px] text-white/50 mt-1">SPRINT</span>
         </div>
         
         {/* Pass button - hold to charge */}
         <div className="flex flex-col items-center">
           <button
-            className="w-16 h-16 rounded-full bg-blue-600 border-b-6 border-blue-900 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center"
+            className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-blue-600 border-b-4 sm:border-b-6 border-blue-900 shadow-xl active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center"
             onPointerDown={() => startKickCharge("pass")}
             onPointerUp={releaseKick}
             onPointerLeave={releaseKick}
           >
-            <Zap className="w-6 h-6 text-white" />
+            <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </button>
-          <span className="text-[8px] text-white/50 mt-1">PASS</span>
+          <span className="text-[7px] sm:text-[8px] text-white/50 mt-1">PASS</span>
         </div>
         
         {/* Shoot button - hold to charge */}
         <div className="flex flex-col items-center">
           <button
-            className="w-20 h-20 rounded-full bg-red-600 border-b-8 border-red-900 shadow-2xl active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center"
+            className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-red-600 border-b-4 sm:border-b-8 border-red-900 shadow-2xl active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center"
             onPointerDown={() => startKickCharge("shoot")}
             onPointerUp={releaseKick}
             onPointerLeave={releaseKick}
           >
-            <Trophy className="w-8 h-8 text-white" />
+            <Trophy className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
           </button>
-          <span className="text-[8px] text-white/50 mt-1">SHOOT</span>
+          <span className="text-[7px] sm:text-[8px] text-white/50 mt-1">SHOOT</span>
         </div>
       </div>
 
-      {/* Stats Bar (Bottom) */}
-      <div className="h-10 bg-black/40 border-t border-white/5 flex items-center justify-center gap-8 text-[10px] text-white/40 uppercase tracking-[0.2em]">
+      {/* Stats Bar (Bottom) - hidden on mobile */}
+      <div className="hidden sm:flex h-10 bg-black/40 border-t border-white/5 items-center justify-center gap-8 text-[10px] text-white/40 uppercase tracking-[0.2em]">
         <div className="flex items-center gap-2">
           <Users className="w-3 h-3" /> 7 vs 7 Arcade
         </div>
         <div className="flex items-center gap-2">
           <Zap className="w-3 h-3" /> {selectedTeam?.name}
         </div>
-        <div className="hidden sm:block">
+        <div>
           Hold SPACE/ENTER to charge • Q=Through Ball • E=Tackle • Shift=Sprint
         </div>
       </div>

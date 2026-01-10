@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
@@ -12,14 +12,30 @@ import {
   ChevronRight,
   ShieldCheck,
   Gift,
+  Loader2,
+  Coins,
+  Swords,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useLineraWallet } from "../lib/useLineraWallet";
 
 export const RewardsScreen: React.FC = () => {
-  const { setScreen, xp, walletAddress } = useGame();
+  const { setScreen, xp: localXp, walletAddress } = useGame();
+  const { profile, authenticated, loading, refreshProfile } = useLineraWallet();
 
-  // Progress logic
-  const level = Math.floor(xp / 500) + 1;
+  // Refresh profile on mount
+  useEffect(() => {
+    if (authenticated) refreshProfile();
+  }, [authenticated, refreshProfile]);
+
+  // Use on-chain data if available, fallback to local
+  const xp = profile?.xp ?? localXp;
+  const coins = profile?.coins ?? 0;
+  const matchesPlayed = profile?.matches_played ?? 0;
+  const wins = profile?.wins ?? 0;
+  const losses = profile?.losses ?? 0;
+  const draws = profile?.draws ?? 0;
+  const level = profile?.level ?? Math.floor(xp / 500) + 1;
   const progress = ((xp % 500) / 500) * 100;
   const nextLevelXp = 500 - (xp % 500);
 
@@ -56,9 +72,13 @@ export const RewardsScreen: React.FC = () => {
               DASHBOARD
             </h2>
             <div className="flex items-center gap-2 mt-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              {loading ? (
+                <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+              ) : (
+                <span className={`w-1.5 h-1.5 rounded-full ${authenticated ? "bg-green-500" : "bg-yellow-500"} animate-pulse`} />
+              )}
               <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                On-Chain Verified
+                {authenticated ? "On-Chain Verified" : "Local Only"}
               </span>
             </div>
           </div>
@@ -77,8 +97,9 @@ export const RewardsScreen: React.FC = () => {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8"
+        className="flex-1 overflow-y-auto no-scrollbar px-4 py-6"
       >
+        <div className="max-w-4xl mx-auto space-y-8">
         {/* Progress Visualization Hero */}
         <motion.div
           variants={itemVariants}
@@ -100,21 +121,53 @@ export const RewardsScreen: React.FC = () => {
                   <div className="h-12 w-px bg-white/10" />
                   <div>
                     <div className="text-sm font-black text-blue-400 uppercase italic">
-                      Veteran
+                      {level >= 10 ? "Legend" : level >= 5 ? "Veteran" : "Rookie"}
                     </div>
                     <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                      Season 1 Elite
+                      {matchesPlayed} Matches Played
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em] mb-2">
-                  Total Energy
+              <div className="text-right space-y-2">
+                <div>
+                  <div className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em] mb-1">
+                    Total XP
+                  </div>
+                  <div className="text-2xl font-arcade font-black text-yellow-400 flex items-center justify-end gap-1">
+                    {xp} <Zap className="w-4 h-4 fill-current" />
+                  </div>
                 </div>
-                <div className="text-3xl font-arcade font-black text-yellow-400 flex items-center justify-end gap-2">
-                  {xp} <Zap className="w-5 h-5 fill-current" />
+                <div>
+                  <div className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em] mb-1">
+                    Coins
+                  </div>
+                  <div className="text-2xl font-arcade font-black text-amber-500 flex items-center justify-end gap-1">
+                    {coins} <Coins className="w-4 h-4" />
+                  </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Match Record */}
+            <div className="flex justify-center gap-6 mb-6 py-3 bg-white/5 rounded-xl">
+              <div className="text-center">
+                <div className="text-2xl font-arcade font-black text-green-400">{wins}</div>
+                <div className="text-[9px] text-slate-500 font-bold uppercase">Wins</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-arcade font-black text-slate-400">{draws}</div>
+                <div className="text-[9px] text-slate-500 font-bold uppercase">Draws</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-arcade font-black text-red-400">{losses}</div>
+                <div className="text-[9px] text-slate-500 font-bold uppercase">Losses</div>
+              </div>
+              <div className="text-center border-l border-white/10 pl-6">
+                <div className="text-2xl font-arcade font-black text-white">
+                  {matchesPlayed > 0 ? Math.round((wins / matchesPlayed) * 100) : 0}%
+                </div>
+                <div className="text-[9px] text-slate-500 font-bold uppercase">Win Rate</div>
               </div>
             </div>
 
@@ -201,6 +254,7 @@ export const RewardsScreen: React.FC = () => {
             />
           </div>
         </motion.div>
+        </div>
       </motion.div>
 
       {/* Footer Controls */}

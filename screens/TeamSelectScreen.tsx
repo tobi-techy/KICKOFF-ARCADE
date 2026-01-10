@@ -1,7 +1,7 @@
 import React from "react";
 import { useGame } from "../context/GameContext";
 import { TEAMS } from "../constants";
-import { ScreenName } from "../types";
+import { ScreenName, GameMode } from "../types";
 import {
   ChevronLeft,
   Shield,
@@ -13,11 +13,15 @@ import {
 import { motion } from "framer-motion";
 
 export const TeamSelectScreen: React.FC = () => {
-  const { setScreen, selectTeam } = useGame();
+  const { setScreen, selectTeam, gameMode } = useGame();
 
   const handleSelect = (team: (typeof TEAMS)[0]) => {
     selectTeam(team);
-    setScreen(ScreenName.SQUAD_SELECT);
+    if (gameMode === GameMode.MULTIPLAYER) {
+      setScreen(ScreenName.MULTIPLAYER_LOBBY);
+    } else {
+      setScreen(ScreenName.SQUAD_SELECT);
+    }
   };
 
   // Generate deterministic stats based on index for demo purposes

@@ -4,9 +4,9 @@ const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001
 
 export const LINERA_CONFIG = {
   faucetUrl: "https://faucet.testnet-conway.linera.net",
-  applicationId: "3a0710ee2a379bb1eab89c0891bdb806efea18a50fe0b675e11ca399a6572249",
+  applicationId: "0db11f239706aa1024d0d530d933b510530a88f13b50ca0e3c914c7c9aef336e",
 };
-
+//dcb4a5413bcbadbb255c592595615c818e7265f8adb28ae75fd6cbb601c28798
 export interface PlayerProfile {
   xp: number;
   coins: number;
@@ -153,4 +153,89 @@ export async function getLeaderboard(count = 10): Promise<LeaderboardEntry[]> {
 export async function isPlayerRegistered(address: string): Promise<boolean> {
   const profile = await getPlayerProfile(address);
   return profile !== null;
+}
+
+export async function createWager(lobbyId: string, amount: number): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/wager/create", {
+      method: "POST",
+      body: JSON.stringify({ lobbyId, amount }),
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+export async function acceptWager(lobbyId: string): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/wager/accept", {
+      method: "POST",
+      body: JSON.stringify({ lobbyId }),
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+export async function cancelWager(lobbyId: string): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/wager/cancel", {
+      method: "POST",
+      body: JSON.stringify({ lobbyId }),
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+export async function resolveWager(
+  lobbyId: string,
+  winner: string,
+  homeScore: number,
+  awayScore: number
+): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/wager/resolve", {
+      method: "POST",
+      body: JSON.stringify({ lobbyId, winner, homeScore, awayScore }),
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+export async function getWager(lobbyId: string): Promise<any | null> {
+  try {
+    const result = await api(`/api/linera/wager/${lobbyId}`);
+    return result.data || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function forfeitMatch(): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/forfeit", {
+      method: "POST",
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+export async function forfeitWager(lobbyId: string): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/wager/forfeit", {
+      method: "POST",
+      body: JSON.stringify({ lobbyId }),
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
 }

@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { GameProvider, useGame } from "./context/GameContext";
-import { ScreenName } from "./types";
+import { ScreenName, GameMode } from "./types";
 import { AnimatePresence, motion } from "framer-motion";
 
 // Screens
@@ -12,9 +12,31 @@ import { MatchScreen } from "./screens/MatchScreen";
 import { MatchResultScreen } from "./screens/MatchResultScreen";
 import { WalletScreen } from "./screens/WalletScreen";
 import { RewardsScreen } from "./screens/RewardsScreen";
+import { MultiplayerLobbyScreen } from "./screens/MultiplayerLobbyScreen";
 
 const ScreenRouter = () => {
-  const { currentScreen } = useGame();
+  const { currentScreen, setScreen, setGameMode, setLobby } = useGame();
+
+  // Check for join link on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const joinId = params.get("join");
+    if (joinId) {
+      // Store join ID and redirect to team select first
+      setLobby({ 
+        lobbyId: joinId, 
+        hostId: "", 
+        hostName: "", 
+        hostTeam: "", 
+        wagerAmount: 0, 
+        status: "waiting" 
+      });
+      setGameMode(GameMode.MULTIPLAYER);
+      setScreen(ScreenName.TEAM_SELECT);
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [setScreen, setGameMode, setLobby]);
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -34,6 +56,8 @@ const ScreenRouter = () => {
         return <WalletScreen />;
       case ScreenName.REWARDS:
         return <RewardsScreen />;
+      case ScreenName.MULTIPLAYER_LOBBY:
+        return <MultiplayerLobbyScreen />;
       default:
         return <HomeScreen />;
     }

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
@@ -14,11 +14,28 @@ import {
   Star,
   Zap,
   ChevronRight,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useLineraWallet } from "../lib/useLineraWallet";
 
 export const MatchResultScreen: React.FC = () => {
   const { matchStats, setScreen, walletAddress } = useGame();
+  const { submitMatch, authenticated, loading: walletLoading } = useLineraWallet();
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+
+  // Auto-sync match to chain when wallet is connected
+  useEffect(() => {
+    if (authenticated && matchStats && syncStatus === "idle") {
+      setSyncStatus("syncing");
+      submitMatch(matchStats.homeScore, matchStats.awayScore)
+        .then((result) => {
+          setSyncStatus(result ? "synced" : "error");
+        })
+        .catch(() => setSyncStatus("error"));
+    }
+  }, [authenticated, matchStats, syncStatus, submitMatch]);
 
   if (!matchStats) return null;
 
@@ -173,6 +190,23 @@ export const MatchResultScreen: React.FC = () => {
                   XP
                 </span>
               </div>
+              
+              {/* Wager Winnings */}
+              {matchStats.wager && matchStats.wager > 0 && (
+                <div className={`mt-3 p-3 rounded-xl border ${
+                  isWin 
+                    ? "bg-green-500/10 border-green-500/20" 
+                    : "bg-red-500/10 border-red-500/20"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase text-slate-400">Wager</span>
+                    <span className={`font-arcade font-black ${isWin ? "text-green-400" : "text-red-400"}`}>
+                      {isWin ? `+${matchStats.winnings || matchStats.wager * 2 * 0.95}` : `-${matchStats.wager}`}
+                      <Coins className="w-3 h-3 inline ml-1" />
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {!walletAddress ? (
@@ -187,13 +221,27 @@ export const MatchResultScreen: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="mt-4 p-3 bg-green-500/10 rounded-xl border border-green-500/20">
+              <div className={`mt-4 p-3 rounded-xl border ${
+                syncStatus === "synced" ? "bg-green-500/10 border-green-500/20" :
+                syncStatus === "error" ? "bg-red-500/10 border-red-500/20" :
+                "bg-blue-500/10 border-blue-500/20"
+              }`}>
                 <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-green-400 font-bold uppercase">
+                  <span className={`font-bold uppercase ${
+                    syncStatus === "synced" ? "text-green-400" :
+                    syncStatus === "error" ? "text-red-400" : "text-blue-400"
+                  }`}>
                     On-Chain Sync
                   </span>
-                  <span className="text-green-400 font-black uppercase italic">
-                    Ready
+                  <span className={`font-black uppercase italic flex items-center gap-1 ${
+                    syncStatus === "synced" ? "text-green-400" :
+                    syncStatus === "error" ? "text-red-400" : "text-blue-400"
+                  }`}>
+                    {syncStatus === "syncing" && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {syncStatus === "synced" && <CheckCircle2 className="w-3 h-3" />}
+                    {syncStatus === "syncing" ? "Syncing..." : 
+                     syncStatus === "synced" ? "Saved" : 
+                     syncStatus === "error" ? "Failed" : "Ready"}
                   </span>
                 </div>
               </div>

@@ -1,0 +1,52 @@
+## Missing Improvements & Fun Enhancements
+
+### 🎮 Gameplay Mechanics
+
+High Impact:
+1. Running animations - You have partial animations but they're not being used. Animate sprites when moving
+2. Player switching - Currently stuck with one player; add tap-to-switch or auto-switch to nearest player
+3. Set pieces - Corners, free kicks, throw-ins are detected but not implemented as playable moments
+4. Ball shadow - Adds depth perception, makes the game feel more polished
+5. Goalkeeper diving - GK just moves; add diving saves for shots
+
+Medium Impact:
+6. Skill moves - Quick direction changes, feints (double-tap to nutmeg)
+7. Lob/chip passes - Currently only ground passes; add aerial balls
+8. Headers - When ball is in air near player
+9. Offside rule (optional toggle) - Adds tactical depth
+10. Fatigue visual - Show tired players (slower animation, sweat particles)
+
+### 📊 Game Feel & Juice
+
+11. Screen shake on goals
+12. Goal celebration - Brief animation/zoom on scorer
+13. Crowd noise - Ambient cheering that reacts to possession/shots
+14. Ball trail - Subtle trail on powerful shots
+15. Hit pause - 2-3 frame freeze on powerful kicks (game feel)
+16. Commentary text - "Great save!", "Close!", "What a goal!"
+17. Replay system - Show goal replay from different angle
+
+### 🏆 Progression & Engagement
+
+18. Match stats screen - Shots, possession %, passes completed
+19. Player form/morale - Performance affects next match stats
+20. Training mini-games - Penalty shootout, free kick practice
+21. Tournament mode - Cup bracket with progression
+22. Daily challenges - "Score 3 goals", "Win without conceding"
+23. Achievement system - Unlock badges for milestones
+
+### 🎨 Visual Polish
+
+24. Team kit colors on sprites - Use CSS filters or shader to tint sprites to team colors (not just hue-rotate for AI)
+25. Field markings animation - Subtle grass sway
+26. Weather effects - Rain, snow (affects ball physics)
+27. Day/night modes - Different lighting
+28. Scoreboard animations - Flip animation on score change
+
+### 🔧 Technical/UX
+
+29. Difficulty levels - AI aggression, reaction time, passing accuracy
+30. Control customization - Button layout options
+31. Haptic feedback - Vibration on mobile for kicks/goals
+32. Pause menu improvements - Formation change mid-game
+33. Quick restart - Instant rematch option
