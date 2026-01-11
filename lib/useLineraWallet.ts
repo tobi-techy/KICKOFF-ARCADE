@@ -4,11 +4,13 @@ import {
   disconnectWallet,
   getChainId,
   getPlayerProfile,
+  getPlayerCards,
   isPlayerRegistered,
   isWalletPersisted,
   registerPlayer,
   recordMatch,
   PlayerProfile,
+  PlayerCard,
   LINERA_CONFIG,
 } from "./linera";
 
@@ -17,6 +19,7 @@ export function useLineraWallet() {
   const [authenticated, setAuthenticated] = useState(false);
   const [chainId, setChainId] = useState<string | null>(null);
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
+  const [cards, setCards] = useState<PlayerCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +31,7 @@ export function useLineraWallet() {
       setAuthenticated(true);
       // Fetch profile in background
       getPlayerProfile(existingChainId).then(setProfile).catch(() => {});
+      getPlayerCards(existingChainId).then(setCards).catch(() => {});
     }
     setReady(true);
   }, []);
@@ -73,8 +77,12 @@ export function useLineraWallet() {
     if (!chainId) return;
     setLoading(true);
     try {
-      const playerProfile = await getPlayerProfile(chainId);
+      const [playerProfile, playerCards] = await Promise.all([
+        getPlayerProfile(chainId),
+        getPlayerCards(chainId),
+      ]);
       setProfile(playerProfile);
+      setCards(playerCards);
     } catch (err) {
       setError("Failed to refresh profile");
     } finally {
@@ -113,6 +121,7 @@ export function useLineraWallet() {
     chainId,
     address: chainId,
     profile,
+    cards,
     login,
     logout,
     refreshProfile,

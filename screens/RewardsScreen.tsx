@@ -31,7 +31,7 @@ export const RewardsScreen: React.FC = () => {
   // Use on-chain data if available, fallback to local
   const xp = profile?.xp ?? localXp;
   const coins = profile?.coins ?? 0;
-  const matchesPlayed = profile?.matches_played ?? 0;
+  const matchesPlayed = profile?.matchesPlayed ?? 0;
   const wins = profile?.wins ?? 0;
   const losses = profile?.losses ?? 0;
   const draws = profile?.draws ?? 0;

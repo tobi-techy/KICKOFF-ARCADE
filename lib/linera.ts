@@ -10,11 +10,23 @@ export const LINERA_CONFIG = {
 export interface PlayerProfile {
   xp: number;
   coins: number;
-  matches_played: number;
+  matchesPlayed: number;
   wins: number;
   losses: number;
   draws: number;
   level: number;
+}
+
+export interface PlayerCard {
+  id: number;
+  name: string;
+  position: string;
+  speed: number;
+  shooting: number;
+  passing: number;
+  defending: number;
+  rating: number;
+  rarity: number;
 }
 
 export interface LeaderboardEntry {
@@ -233,6 +245,35 @@ export async function forfeitWager(lobbyId: string): Promise<boolean> {
     const result = await api("/api/linera/wager/forfeit", {
       method: "POST",
       body: JSON.stringify({ lobbyId }),
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+export async function getPlayerCards(owner: string): Promise<PlayerCard[]> {
+  try {
+    const result = await api(`/api/linera/cards/${owner}`);
+    return result.data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function mintPlayerCard(
+  name: string,
+  position: string,
+  speed: number,
+  shooting: number,
+  passing: number,
+  defending: number,
+  rarity: number
+): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/mint", {
+      method: "POST",
+      body: JSON.stringify({ name, position, speed, shooting, passing, defending, rarity }),
     });
     return result.success;
   } catch {

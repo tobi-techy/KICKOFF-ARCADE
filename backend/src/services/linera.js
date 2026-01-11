@@ -1,134 +1,49 @@
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+// Linera blockchain integration via local linera service
+// Requires: linera service --port 8080
 
 const APP_ID = process.env.APPLICATION_ID;
 const CHAIN_ID = process.env.CHAIN_ID;
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000;
-const REQUEST_TIMEOUT = 30000;
+const SERVICE_URL = process.env.LINERA_SERVICE_URL || "http://localhost:8080";
 
 class LineraService {
   constructor() {
-    this.serviceProcess = null;
-    this.servicePort = 8080;
-    this.serviceUrl = `http://localhost:${this.servicePort}`;
-    this.isReady = false;
+    this.baseUrl = `${SERVICE_URL}/chains/${CHAIN_ID}/applications/${APP_ID}`;
+    this.isReady = true;
   }
 
-  async exec(command, timeout = 30000) {
+  async startService() {
+    console.log("Linera service: Using", SERVICE_URL);
+    console.log("Linera service: App endpoint", this.baseUrl);
+    return true;
+  }
+
+  stopService() {}
+
+  async query(graphqlQuery) {
     try {
-      const { stdout, stderr } = await execAsync(`linera ${command}`, { timeout });
-      if (stderr) console.warn("Linera stderr:", stderr);
-      return stdout.trim();
+      const response = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: graphqlQuery }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      if (result.errors) {
+        throw new Error(result.errors[0]?.message || "GraphQL error");
+      }
+      return result;
     } catch (error) {
-      console.error("Linera command failed:", error.message);
+      console.error("Linera query failed:", error.message);
       throw error;
     }
   }
 
-  async startService() {
-    if (this.serviceProcess) return;
-
-    const { spawn } = await import("child_process");
-    this.serviceProcess = spawn("linera", ["service", "--port", String(this.servicePort)], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    this.serviceProcess.stdout.on("data", (data) => {
-      const msg = data.toString();
-      console.log("[linera-service]", msg);
-      if (msg.includes("GraphiQL") || msg.includes("localhost:8080")) {
-        this.isReady = true;
-      }
-    });
-
-    this.serviceProcess.stderr.on("data", (data) => {
-      const msg = data.toString();
-      console.log("[linera-service]", msg);
-      // Linera logs to stderr, check for ready signal there too
-      if (msg.includes("GraphiQL") || msg.includes("localhost:8080")) {
-        this.isReady = true;
-      }
-    });
-
-    this.serviceProcess.on("exit", (code) => {
-      console.log(`Linera service exited with code ${code}`);
-      this.isReady = false;
-      this.serviceProcess = null;
-    });
-
-    // Wait for service to be ready
-    await this.waitForReady(15000);
-    console.log(`Linera service started on port ${this.servicePort}`);
-  }
-
-  async waitForReady(timeout = 10000) {
-    const start = Date.now();
-    while (!this.isReady && Date.now() - start < timeout) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    if (!this.isReady) throw new Error("Linera service failed to start");
-  }
-
-  stopService() {
-    if (this.serviceProcess) {
-      this.serviceProcess.kill();
-      this.serviceProcess = null;
-      this.isReady = false;
-    }
-  }
-
-  async fetchWithTimeout(url, options, timeout = REQUEST_TIMEOUT) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
-      return response;
-    } finally {
-      clearTimeout(id);
-    }
-  }
-
-  async queryWithRetry(query, retries = MAX_RETRIES) {
-    const url = `${this.serviceUrl}/chains/${CHAIN_ID}/applications/${APP_ID}`;
-    
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        if (!this.isReady) {
-          await this.startService();
-        }
-
-        const response = await this.fetchWithTimeout(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        if (result.errors) {
-          throw new Error(result.errors[0]?.message || "GraphQL error");
-        }
-        return result;
-      } catch (error) {
-        console.error(`Query attempt ${attempt}/${retries} failed:`, error.message);
-        if (attempt === retries) throw error;
-        await new Promise((r) => setTimeout(r, RETRY_DELAY * attempt));
-      }
-    }
-  }
-
-  async query(query) {
-    return this.queryWithRetry(query);
-  }
-
   async mutate(mutation) {
-    return this.queryWithRetry(mutation);
+    return this.query(mutation);
   }
 
   // API Methods
@@ -140,6 +55,10 @@ class LineraService {
     return this.mutate(
       `mutation { recordMatch(homeScore: ${homeScore}, awayScore: ${awayScore}) }`
     );
+  }
+
+  async forfeitMatch() {
+    return this.mutate(`mutation { forfeitMatch }`);
   }
 
   async getPlayerProfile(address) {
@@ -241,6 +160,10 @@ class LineraService {
     `);
   }
 
+  async forfeitWager(lobbyId) {
+    return this.mutate(`mutation { forfeitWager(lobbyId: "${lobbyId}") }`);
+  }
+
   async getWager(lobbyId) {
     return this.query(`
       query {
@@ -256,20 +179,12 @@ class LineraService {
     `);
   }
 
-  async forfeitMatch() {
-    return this.mutate(`mutation { forfeitMatch }`);
-  }
-
-  async forfeitWager(lobbyId) {
-    return this.mutate(`mutation { forfeitWager(lobbyId: "${lobbyId}") }`);
-  }
-
   async getWalletInfo() {
-    return this.exec("wallet show");
+    return { info: "Cloud mode - wallet managed by frontend" };
   }
 
   async getBalance(chainId) {
-    return this.exec(`wallet show ${chainId || ""}`);
+    return { balance: "N/A in cloud mode" };
   }
 }
 

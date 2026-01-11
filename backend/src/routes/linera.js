@@ -47,6 +47,17 @@ router.get("/profile/:address", async (req, res) => {
   }
 });
 
+// Get player cards
+router.get("/cards/:owner", async (req, res) => {
+  try {
+    const { owner } = req.params;
+    const result = await lineraService.getPlayerCards(owner);
+    res.json({ success: true, data: result.data?.playerCards || [] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Get leaderboard
 router.get("/leaderboard", async (req, res) => {
   try {
