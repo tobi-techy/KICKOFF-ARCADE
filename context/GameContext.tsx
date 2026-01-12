@@ -7,6 +7,7 @@ import {
   MatchStats,
   GameMode,
   LobbyData,
+  Difficulty,
 } from "../types";
 import { DEMO_PLAYERS, EXTRA_PLAYERS } from "../constants";
 
@@ -14,6 +15,7 @@ interface GameContextType extends GameState {
   setScreen: (screen: ScreenName) => void;
   setGameMode: (mode: GameMode) => void;
   setMatchDuration: (duration: number) => void;
+  setDifficulty: (difficulty: Difficulty) => void;
   selectTeam: (team: Team) => void;
   setSquadPlayer: (index: number, player: Player) => void;
   connectWallet: (address: string) => void;
@@ -41,6 +43,7 @@ const initialState: GameState = {
   walletAddress: null,
   matchStats: null,
   matchDuration: 600,
+  difficulty: "medium",
   xp: 0,
   coins: 0,
   inventory: [],
@@ -61,6 +64,9 @@ export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
 
   const setMatchDuration = (duration: number) =>
     setState((prev) => ({ ...prev, matchDuration: duration }));
+
+  const setDifficulty = (difficulty: Difficulty) =>
+    setState((prev) => ({ ...prev, difficulty }));
 
   const selectTeam = (team: Team) =>
     setState((prev) => ({ ...prev, selectedTeam: team }));
@@ -148,6 +154,7 @@ export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
         setScreen,
         setGameMode,
         setMatchDuration,
+        setDifficulty,
         selectTeam,
         setSquadPlayer,
         connectWallet,

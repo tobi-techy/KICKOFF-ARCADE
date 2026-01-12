@@ -6,7 +6,8 @@ import { Joystick } from "../components/Joystick";
 import { PixelPlayer } from "../components/PixelPlayer";
 import { sounds } from "../utils/sounds";
 import { GamePhysics, KickOptions } from "../utils/physics";
-import { computeAIMove, resetAIStates, AIPlayer } from "../utils/ai";
+import { computeAIMove, resetAIStates, AIPlayer, setAIDifficulty } from "../utils/ai";
+import { multiplayer } from "../lib/multiplayer";
 import { Timer, Pause, Play, RefreshCw, LogOut, Users, Zap, Target, Trophy, ArrowLeftRight } from "lucide-react";
 
 // --- Constants ---
@@ -49,8 +50,16 @@ interface GameObject {
 }
 
 export const MatchScreen: React.FC = () => {
-  const { setScreen, finishMatch, squad, selectedTeam, matchDuration } =
+  const { setScreen, finishMatch, squad, selectedTeam, matchDuration, difficulty, gameMode, lobby } =
     useGame();
+
+  const isMultiplayer = gameMode === "MULTIPLAYER";
+  const isHost = lobby?.hostId === lobby?.lobbyId?.split("-")[0]; // Simple check
+
+  // Set AI difficulty on mount
+  useEffect(() => {
+    setAIDifficulty(difficulty);
+  }, [difficulty]);
 
   // Game State Refs
   const gameState = useRef<{
@@ -87,9 +96,12 @@ export const MatchScreen: React.FC = () => {
   const playerDivsRef = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const ballDivRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef(1);
   const possessionRef = useRef({ home: 0, away: 0 });
   const physicsRef = useRef<GamePhysics | null>(null);
+  const cameraRef = useRef({ x: FIELD_WIDTH / 2, y: FIELD_HEIGHT / 2, zoom: 1.4 });
+  const remoteInputRef = useRef({ x: 0, y: 0, sprint: false, kick: null as null | { type: string; power: number } });
   
   // Kick charging state
   const kickChargeRef = useRef({ charging: false, startTime: 0, type: "pass" as "pass" | "shoot" });
@@ -487,7 +499,7 @@ export const MatchScreen: React.FC = () => {
       : (user.team === "home" ? 0 : Math.PI);
 
     const result = physics.slideTackle(user.id, angle);
-    tackleRef.current = { sliding: true, cooldown: 60 }; // 1 second cooldown
+    tackleRef.current = { sliding: true, cooldown: 30 }; // 0.5 second cooldown
 
     if (result.foul) {
       setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
@@ -525,6 +537,37 @@ export const MatchScreen: React.FC = () => {
       physics.kick({ type: "through", power: 0.7, targetAngle: angle });
       sounds.pass();
     }
+  };
+
+  // Helper to run AI for a player
+  const runAIForPlayer = (p: GameObject, hasBall: boolean, state: typeof gameState.current, physics: GamePhysics) => {
+    const aiPlayer: AIPlayer = {
+      id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy,
+      team: p.team as "home" | "away",
+      role: p.role as "gk" | "def" | "mid" | "att",
+      speed: p.speed, isUser: p.isUser,
+    };
+    const allAIPlayers = state.players.map(pl => ({
+      id: pl.id, x: pl.x, y: pl.y, vx: pl.vx, vy: pl.vy,
+      team: pl.team as "home" | "away",
+      role: pl.role as "gk" | "def" | "mid" | "att",
+      speed: pl.speed, isUser: pl.isUser,
+    }));
+    
+    const move = computeAIMove(
+      aiPlayer, state.ball, allAIPlayers, physics,
+      () => sounds.pass(),
+      () => sounds.kick(),
+      (success, foul) => {
+        if (foul) {
+          setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
+          setTimeout(() => setUiState(prev => ({ ...prev, eventText: "" })), 1500);
+        } else if (success) sounds.kick();
+      }
+    );
+    
+    physics.movePlayer(p.id, move.vx, move.vy, move.sprint, hasBall);
+    if (hasBall) physics.dribbleBall(p.id, move.vx, move.vy);
   };
 
   const gameLoop = () => {
@@ -659,7 +702,12 @@ export const MatchScreen: React.FC = () => {
     state.players.forEach((p) => {
       const hasBall = ballOwner === p.id;
       
-      if (p.isUser) {
+      // Determine if this player is controlled by local user
+      const isLocalPlayer = p.isUser;
+      // In multiplayer, away team is controlled by remote player (not AI)
+      const isRemotePlayer = isMultiplayer && p.team === "away";
+      
+      if (isLocalPlayer) {
         const speedMultiplier = p.speed ? (0.7 + (p.speed / 100) * 0.5) : 1;
         const playerSpeed = PLAYER_SPEED * speedMultiplier;
         const vx = joystickRef.current.x * playerSpeed;
@@ -675,47 +723,38 @@ export const MatchScreen: React.FC = () => {
         if (Math.abs(stamina - uiState.stamina) > 1) {
           setUiState(prev => ({ ...prev, stamina }));
         }
-      } else {
-        // All AI players (both teams)
-        const aiPlayer: AIPlayer = {
-          id: p.id,
-          x: p.x,
-          y: p.y,
-          vx: p.vx,
-          vy: p.vy,
-          team: p.team as "home" | "away",
-          role: p.role as "gk" | "def" | "mid" | "att",
-          speed: p.speed,
-          isUser: p.isUser,
-        };
-        const allAIPlayers = state.players.map(pl => ({
-          id: pl.id, x: pl.x, y: pl.y, vx: pl.vx, vy: pl.vy,
-          team: pl.team as "home" | "away",
-          role: pl.role as "gk" | "def" | "mid" | "att",
-          speed: pl.speed, isUser: pl.isUser,
-        }));
         
-        const move = computeAIMove(
-          aiPlayer,
-          state.ball,
-          allAIPlayers,
-          physics,
-          () => sounds.pass(),
-          () => sounds.kick(),
-          (success, foul) => {
-            if (foul) {
-              setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
-              setTimeout(() => setUiState(prev => ({ ...prev, eventText: "" })), 1500);
-            } else if (success) {
-              sounds.kick();
-            }
-          }
-        );
-        
-        physics.movePlayer(p.id, move.vx, move.vy, move.sprint, hasBall);
-        if (hasBall) {
-          physics.dribbleBall(p.id, move.vx, move.vy);
+        // Send input to remote player in multiplayer
+        if (isMultiplayer && lobby?.lobbyId) {
+          multiplayer.sendInput(lobby.lobbyId, {
+            playerId: p.id,
+            x: joystickRef.current.x,
+            y: joystickRef.current.y,
+            sprint: sprintRef.current,
+          });
         }
+      } else if (isRemotePlayer) {
+        // Multiplayer: Use remote player's input for away team's active player
+        const isAwayActivePlayer = p.id === uiState.activeOpponentId;
+        if (isAwayActivePlayer) {
+          const remote = remoteInputRef.current;
+          const speedMultiplier = p.speed ? (0.7 + (p.speed / 100) * 0.5) : 1;
+          const playerSpeed = PLAYER_SPEED * speedMultiplier;
+          const vx = remote.x * playerSpeed;
+          const vy = remote.y * playerSpeed;
+          
+          physics.movePlayer(p.id, vx, vy, remote.sprint, hasBall);
+          
+          if (hasBall) {
+            physics.dribbleBall(p.id, vx, vy);
+          }
+        } else {
+          // Away team non-active players still use AI for positioning
+          runAIForPlayer(p, hasBall, state, physics);
+        }
+      } else {
+        // Single player: All non-user players use AI
+        runAIForPlayer(p, hasBall, state, physics);
       }
 
       // Sync position from physics
@@ -734,8 +773,34 @@ export const MatchScreen: React.FC = () => {
       }
     });
 
-    // Visual Updates
+    // Visual Updates with Camera
     const scale = scaleRef.current;
+    const camera = cameraRef.current;
+    
+    // Camera follows the user's player or ball
+    const user = state.players.find(p => p.isUser);
+    // const ballOwner = physics.getBallOwner();
+    const followTarget = user && ballOwner === user.id 
+      ? { x: user.x, y: user.y }
+      : { x: (state.ball.x + (user?.x || FIELD_WIDTH/2)) / 2, y: (state.ball.y + (user?.y || FIELD_HEIGHT/2)) / 2 };
+    
+    // Smooth camera follow
+    camera.x += (followTarget.x - camera.x) * 0.08;
+    camera.y += (followTarget.y - camera.y) * 0.08;
+    
+    // Clamp camera to keep field in view
+    const viewW = FIELD_WIDTH / camera.zoom;
+    const viewH = FIELD_HEIGHT / camera.zoom;
+    camera.x = Math.max(viewW / 2, Math.min(FIELD_WIDTH - viewW / 2, camera.x));
+    camera.y = Math.max(viewH / 2, Math.min(FIELD_HEIGHT - viewH / 2, camera.y));
+    
+    // Apply camera transform to field
+    if (fieldRef.current) {
+      const offsetX = (FIELD_WIDTH / 2 - camera.x) * scale * camera.zoom;
+      const offsetY = (FIELD_HEIGHT / 2 - camera.y) * scale * camera.zoom;
+      fieldRef.current.style.transform = `scale(${camera.zoom}) translate(${offsetX / camera.zoom}px, ${offsetY / camera.zoom}px)`;
+    }
+    
     state.players.forEach((p) => {
       const el = playerDivsRef.current[p.id];
       if (el) {
@@ -806,6 +871,35 @@ export const MatchScreen: React.FC = () => {
       if (type === "bounce") sounds.bounce();
     };
     physics.onOutOfBounds = (type, team, x, y) => handleOutOfBounds(type, team, x, y);
+    physics.onFoul = (foulingPlayerId) => {
+      const ballState = physics.getBallState();
+      setUiState(prev => ({ ...prev, eventText: "FOUL!" }));
+      sounds.bounce();
+      // Place ball for free kick
+      setTimeout(() => {
+        physics.placeBall(ballState.x, ballState.y);
+        setUiState(prev => ({ ...prev, eventText: "" }));
+      }, 1000);
+    };
+
+    // Multiplayer: Listen for remote player input
+    let unsubInput: (() => void) | undefined;
+    if (isMultiplayer && lobby?.lobbyId) {
+      multiplayer.connect();
+      multiplayer.joinMatch(lobby.lobbyId);
+      
+      unsubInput = multiplayer.on("match:input", (data: any) => {
+        if (data.playerId?.startsWith("a_")) {
+          // Update remote input for away team
+          remoteInputRef.current = {
+            x: data.x || 0,
+            y: data.y || 0,
+            sprint: data.sprint || false,
+            kick: data.kick || null,
+          };
+        }
+      });
+    }
 
     // Init Players
     const homeTeam = [
@@ -862,8 +956,9 @@ export const MatchScreen: React.FC = () => {
       window.removeEventListener("resize", updateScale);
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      unsubInput?.();
     };
-  }, [squad, selectedTeam, updateScale]);
+  }, [squad, selectedTeam, updateScale, isMultiplayer, lobby]);
 
   return (
     <div className="flex flex-col h-full bg-slate-950 relative select-none touch-none overflow-hidden font-arcade">
@@ -964,11 +1059,13 @@ export const MatchScreen: React.FC = () => {
       >
         {/* Field - rotated 90deg on mobile for portrait mode */}
         <div
+          ref={fieldRef}
           style={{
             width: FIELD_WIDTH * scaleRef.current,
             height: FIELD_HEIGHT * scaleRef.current,
+            transformOrigin: "center center",
           }}
-          className={`relative bg-emerald-600 rounded-lg shadow-[0_0_100px_rgba(0,0,0,0.5)] border-4 border-white/20 overflow-hidden transition-transform ${uiState.screenShake ? "animate-shake" : ""} sm:rotate-0 rotate-90 origin-center`}
+          className={`relative bg-emerald-600 rounded-lg shadow-[0_0_100px_rgba(0,0,0,0.5)] border-4 border-white/20 overflow-hidden transition-transform duration-100 ${uiState.screenShake ? "animate-shake" : ""} sm:rotate-0 rotate-90 origin-center`}
         >
           {/* Grass Pattern */}
           <div className="absolute inset-0 opacity-10 bg-[repeating-linear-gradient(90deg,transparent,transparent_50px,#000_50px,#000_100px)]"></div>

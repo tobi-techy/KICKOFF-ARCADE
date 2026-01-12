@@ -16,4 +16,6 @@ pub struct KickoffArcadeState {
     pub total_minted: RegisterView<u64>,
     /// Active wagers/escrows indexed by lobby_id
     pub wagers: MapView<String, Wager>,
+    /// Track which host chain we're subscribed to (for guests)
+    pub subscribed_to: RegisterView<Option<String>>,
 }

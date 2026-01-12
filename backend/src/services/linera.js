@@ -1,23 +1,53 @@
 // Linera blockchain integration via local linera service
-// Requires: linera service --port 8080
+import { spawn } from "child_process";
 
 const APP_ID = process.env.APPLICATION_ID;
 const CHAIN_ID = process.env.CHAIN_ID;
-const SERVICE_URL = process.env.LINERA_SERVICE_URL || "http://localhost:8080";
+const SERVICE_PORT = process.env.LINERA_SERVICE_PORT || "8080";
+const SERVICE_URL = process.env.LINERA_SERVICE_URL || `http://localhost:${SERVICE_PORT}`;
 
 class LineraService {
   constructor() {
     this.baseUrl = `${SERVICE_URL}/chains/${CHAIN_ID}/applications/${APP_ID}`;
-    this.isReady = true;
+    this.process = null;
   }
 
   async startService() {
-    console.log("Linera service: Using", SERVICE_URL);
-    console.log("Linera service: App endpoint", this.baseUrl);
-    return true;
+    return new Promise((resolve) => {
+      console.log("Spawning linera service on port", SERVICE_PORT);
+      this.process = spawn("linera", ["service", "--port", SERVICE_PORT], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      this.process.stdout.on("data", (data) => {
+        console.log(`[linera] ${data.toString().trim()}`);
+      });
+
+      this.process.stderr.on("data", (data) => {
+        console.log(`[linera] ${data.toString().trim()}`);
+      });
+
+      this.process.on("error", (err) => {
+        console.error("Failed to start linera service:", err.message);
+        console.log("Continuing without local linera service...");
+        resolve(false);
+      });
+
+      // Wait for service to be ready
+      setTimeout(async () => {
+        console.log("Linera service: App endpoint", this.baseUrl);
+        resolve(true);
+      }, 2000);
+    });
   }
 
-  stopService() {}
+  stopService() {
+    if (this.process) {
+      this.process.kill();
+      this.process = null;
+      console.log("Linera service stopped");
+    }
+  }
 
   async query(graphqlQuery) {
     try {
@@ -61,6 +91,10 @@ class LineraService {
     return this.mutate(`mutation { forfeitMatch }`);
   }
 
+  async claimDailyReward() {
+    return this.mutate(`mutation { claimDailyReward }`);
+  }
+
   async getPlayerProfile(address) {
     return this.query(`
       query {
@@ -72,6 +106,7 @@ class LineraService {
           losses
           draws
           level
+          lastDailyClaim
         }
       }
     `);
@@ -136,10 +171,10 @@ class LineraService {
     `);
   }
 
-  async acceptWager(lobbyId) {
+  async acceptWager(lobbyId, hostChainId) {
     return this.mutate(`
       mutation {
-        acceptWager(lobbyId: "${lobbyId}")
+        acceptWager(lobbyId: "${lobbyId}", hostChainId: "${hostChainId || CHAIN_ID}")
       }
     `);
   }
@@ -170,21 +205,46 @@ class LineraService {
         wager(lobbyId: "${lobbyId}") {
           lobbyId
           host
+          hostChain
           guest
+          guestChain
           amount
           status
           winner
+          createdAt
         }
       }
     `);
   }
 
   async getWalletInfo() {
-    return { info: "Cloud mode - wallet managed by frontend" };
+    return {
+      network: "testnet-conway",
+      chainId: CHAIN_ID,
+      applicationId: APP_ID,
+      serviceUrl: this.baseUrl,
+      faucetUrl: "https://faucet.testnet-conway.linera.net",
+    };
   }
 
-  async getBalance(chainId) {
-    return { balance: "N/A in cloud mode" };
+  async getNetworkStatus() {
+    try {
+      // Query the app to verify connection
+      const result = await this.query(`query { totalMinted }`);
+      return {
+        connected: true,
+        network: "testnet-conway",
+        chainId: CHAIN_ID,
+        applicationId: APP_ID,
+        totalMinted: result.data?.totalMinted || 0,
+      };
+    } catch (error) {
+      return {
+        connected: false,
+        network: "testnet-conway",
+        error: error.message,
+      };
+    }
   }
 }
 

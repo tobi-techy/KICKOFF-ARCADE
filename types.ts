@@ -18,6 +18,8 @@ export enum GameMode {
   TOURNAMENT = "TOURNAMENT",
 }
 
+export type Difficulty = "easy" | "medium" | "hard";
+
 export interface Player {
   id: string;
   name: string;
@@ -74,6 +76,7 @@ export interface GameState {
   walletAddress: string | null;
   matchStats: MatchStats | null;
   matchDuration: number;
+  difficulty: "easy" | "medium" | "hard";
   xp: number;
   coins: number;
   inventory: Player[];

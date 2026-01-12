@@ -4,7 +4,9 @@ const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001
 
 export const LINERA_CONFIG = {
   faucetUrl: "https://faucet.testnet-conway.linera.net",
-  applicationId: "0db11f239706aa1024d0d530d933b510530a88f13b50ca0e3c914c7c9aef336e",
+  applicationId: "870548fc630a2ded1af86fd0ef5fd77a140afcbdc59280d8925224d84b775778",
+  chainId: "17ef7b84785e23ecb8d93fba80fc8e54e943b2c1c333f6a1c9245e98d957e894",
+  network: "testnet-conway",
 };
 //dcb4a5413bcbadbb255c592595615c818e7265f8adb28ae75fd6cbb601c28798
 export interface PlayerProfile {
@@ -67,16 +69,18 @@ export async function initLineraClient() {
 
 export async function connectWallet(): Promise<string | null> {
   try {
-    // Check for existing session
+    // Check for existing session first (before initializing)
     const existingChain = localStorage.getItem(STORAGE.chainId);
-    const existingKey = localStorage.getItem(STORAGE.signerKey);
     
-    if (existingChain && existingKey) {
+    if (existingChain) {
+      // Restore existing wallet - use chainId as identifier
       chainId = existingChain;
-      signerKey = existingKey;
+      signerKey = existingChain;
+      console.log("Restored wallet:", chainId);
       return chainId;
     }
 
+    // No existing session - create new wallet
     await initLineraClient();
     const linera = await import("@linera/client");
     const { signer: signerModule } = linera;
@@ -91,11 +95,10 @@ export async function connectWallet(): Promise<string | null> {
     chainId = (claimedChain as any).chainId || claimedChain.toString();
     console.log("Chain claimed:", chainId);
 
-    // Persist wallet data
+    // Persist chainId as wallet identifier
     localStorage.setItem(STORAGE.chainId, chainId);
-    // Note: In production, encrypt this or use a secure storage method
-    localStorage.setItem(STORAGE.signerKey, address);
-    signerKey = address;
+    localStorage.setItem(STORAGE.signerKey, chainId);
+    signerKey = chainId;
 
     return chainId;
   } catch (error) {

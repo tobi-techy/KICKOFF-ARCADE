@@ -92,6 +92,16 @@ router.get("/wallet", async (req, res) => {
   }
 });
 
+// Get network status (verify testnet connection)
+router.get("/status", async (req, res) => {
+  try {
+    const status = await lineraService.getNetworkStatus();
+    res.json({ success: true, data: status });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Create wager
 router.post("/wager/create", async (req, res) => {
   try {
@@ -152,6 +162,16 @@ router.post("/forfeit", async (req, res) => {
   try {
     const result = await lineraService.forfeitMatch();
     res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Claim daily reward
+router.post("/daily-reward", async (req, res) => {
+  try {
+    const result = await lineraService.claimDailyReward();
+    res.json({ success: true, data: result, rewards: { xp: 50, coins: 100 } });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

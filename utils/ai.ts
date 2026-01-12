@@ -3,6 +3,21 @@ import { GamePhysics } from "./physics";
 const FIELD_WIDTH = 200;
 const FIELD_HEIGHT = 120;
 
+export type Difficulty = "easy" | "medium" | "hard";
+
+// Difficulty settings
+const DIFFICULTY_CONFIG = {
+  easy: { speed: 0.7, shootChance: 0.02, passChance: 0.03, tackleChance: 0.3, reactionDelay: 0.6 },
+  medium: { speed: 0.85, shootChance: 0.05, passChance: 0.05, tackleChance: 0.5, reactionDelay: 0.8 },
+  hard: { speed: 1.0, shootChance: 0.08, passChance: 0.07, tackleChance: 0.7, reactionDelay: 1.0 },
+};
+
+let currentDifficulty: Difficulty = "medium";
+
+export const setAIDifficulty = (diff: Difficulty) => {
+  currentDifficulty = diff;
+};
+
 export interface AIPlayer {
   id: string;
   x: number;
@@ -67,6 +82,7 @@ export const computeAIMove = (
   const ai = getAIState(p.id);
   if (ai.actionCooldown > 0) ai.actionCooldown--;
 
+  const diff = DIFFICULTY_CONFIG[currentDifficulty];
   const ballOwner = physics.getBallOwner();
   const hasBall = ballOwner === p.id;
   const myTeamHasBall = ballOwner?.startsWith(p.team === "home" ? "h" : "a") || false;
@@ -85,35 +101,61 @@ export const computeAIMove = (
   // ========== GOALKEEPER ==========
   if (p.role === "gk") {
     const goalX = p.team === "home" ? 8 : FIELD_WIDTH - 8;
-    const goalY = FIELD_HEIGHT / 2;
+    const goalWidth = FIELD_HEIGHT * 0.28;
+    const goalTop = (FIELD_HEIGHT - goalWidth) / 2;
+    const goalBottom = goalTop + goalWidth;
     
-    // Stay on line, track ball Y
+    // Predict ball trajectory
+    const ballSpeed = Math.hypot(ball.vx, ball.vy);
+    const predictedBallY = ball.y + ball.vy * 0.5;
+    
+    // Check if ball is coming toward goal
+    const ballComingToGoal = (p.team === "home" && ball.vx < -1) || (p.team === "away" && ball.vx > 1);
+    const ballInDangerZone = (p.team === "home" && ball.x < 50) || (p.team === "away" && ball.x > FIELD_WIDTH - 50);
+    
+    // Base position - track ball Y with prediction
     tx = goalX;
-    ty = Math.max(FIELD_HEIGHT * 0.32, Math.min(FIELD_HEIGHT * 0.68, ball.y));
+    const trackY = ballComingToGoal ? predictedBallY : ball.y;
+    ty = Math.max(goalTop + 5, Math.min(goalBottom - 5, trackY));
     
-    // Only rush out for very close loose balls
+    // Dive for shots
+    if (ballComingToGoal && ballSpeed > 3 && ballInDangerZone) {
+      const timeToGoal = Math.abs((goalX - ball.x) / ball.vx);
+      const interceptY = ball.y + ball.vy * timeToGoal;
+      
+      if (interceptY > goalTop && interceptY < goalBottom) {
+        ty = Math.max(goalTop, Math.min(goalBottom, interceptY));
+        if (distToBall < 25) {
+          tx = p.team === "home" ? Math.min(goalX + 12, ball.x - 5) : Math.max(goalX - 12, ball.x + 5);
+          sprint = true;
+        }
+      }
+    }
+    
+    // Rush for loose balls in box
     const looseBall = !ballOwner;
-    const ballInBox = (p.team === "home" && ball.x < 25) || (p.team === "away" && ball.x > FIELD_WIDTH - 25);
+    const ballInBox = (p.team === "home" && ball.x < 30) || (p.team === "away" && ball.x > FIELD_WIDTH - 30);
     
-    if (looseBall && ballInBox && distToBall < 18) {
+    if (looseBall && ballInBox && distToBall < 20) {
       tx = ball.x;
       ty = ball.y;
       sprint = true;
     }
     
-    // GK has ball - clear it immediately
-    if (hasBall) {
+    // GK has ball - quick distribution
+    if (hasBall && ai.actionCooldown === 0) {
+      const clearAngle = p.team === "home" ? 0 : Math.PI;
       const teammates = allPlayers.filter(t => t.team === p.team && t.role !== "gk");
-      const target = teammates.find(t => t.role === "def") || teammates[0];
+      const target = teammates.find(t => t.role === "def") || teammates.find(t => t.role === "mid") || teammates[0];
+      
       if (target) {
         const angle = Math.atan2(target.y - p.y, target.x - p.x);
-        physics.kick({ type: "pass", power: 0.75, targetAngle: angle });
-        onPass();
+        physics.kick({ type: "shoot", power: 0.7, targetAngle: angle }); // Use shoot for more force
       } else {
-        const clearAngle = p.team === "home" ? 0 : Math.PI;
-        physics.kick({ type: "pass", power: 0.85, targetAngle: clearAngle });
+        physics.kick({ type: "shoot", power: 0.8, targetAngle: clearAngle + (Math.random() - 0.5) * 0.3 });
       }
-      ai.actionCooldown = 30;
+      onPass();
+      ai.actionCooldown = 60; // Long cooldown to prevent re-acquiring ball
       return { vx: 0, vy: 0, sprint: false };
     }
   }
@@ -162,7 +204,7 @@ export const computeAIMove = (
     
     // Shoot if in range
     if (distToGoal < 50 && ai.actionCooldown === 0) {
-      const shootChance = p.role === "att" ? 0.06 : 0.03;
+      const shootChance = (p.role === "att" ? diff.shootChance * 1.2 : diff.shootChance);
       if (Math.random() < shootChance) {
         const angle = Math.atan2(goalY - p.y + (Math.random() - 0.5) * 15, goalX - p.x);
         physics.kick({ type: "shoot", power: 0.85, targetAngle: angle });
@@ -174,7 +216,7 @@ export const computeAIMove = (
     
     // Look for pass
     if (ai.actionCooldown === 0) {
-      const passChance = p.role === "def" ? 0.08 : p.role === "mid" ? 0.05 : 0.04;
+      const passChance = (p.role === "def" ? diff.passChance * 1.5 : diff.passChance);
       if (Math.random() < passChance) {
         const target = findBestPass(p, allPlayers);
         if (target) {
@@ -213,14 +255,14 @@ export const computeAIMove = (
       Math.hypot(ball.x - a.x, ball.y - a.y) - Math.hypot(ball.x - b.x, ball.y - b.y)
     )[0];
     
-    if (closestToBall?.id === p.id && distToBall < 30) {
+    if (closestToBall?.id === p.id && distToBall < 30 * diff.reactionDelay) {
       // Press the ball
       tx = ball.x;
       ty = ball.y;
       sprint = distToBall < 15;
       
       // Attempt tackle
-      if (distToBall < 8 && ai.actionCooldown === 0) {
+      if (distToBall < 8 && ai.actionCooldown === 0 && Math.random() < diff.tackleChance) {
         const success = physics.standingTackle(p.id);
         if (success) {
           onTackle(true, false);
@@ -265,7 +307,7 @@ export const computeAIMove = (
   if (dist < 1.5) return { vx: 0, vy: 0, sprint: false };
 
   const angle = Math.atan2(ty - p.y, tx - p.x);
-  const baseSpeed = 3.8 * (p.speed ? 0.8 + (p.speed / 100) * 0.35 : 1);
+  const baseSpeed = 3.8 * (p.speed ? 0.8 + (p.speed / 100) * 0.35 : 1) * diff.speed;
   const speed = sprint ? baseSpeed * 1.25 : baseSpeed;
   
   return {

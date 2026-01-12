@@ -5,12 +5,14 @@
 mod state;
 
 use linera_sdk::{
-    linera_base_types::WithContractAbi,
+    linera_base_types::{WithContractAbi, ChainId, StreamName},
     views::{RootView, View},
     Contract, ContractRuntime,
 };
 use kickoff_arcade::{
-    calculate_level, calculate_rewards, LeaderboardEntry, Operation, PlayerCard, PlayerProfile, Wager,
+    calculate_level, calculate_rewards, CrossChainMessage, LeaderboardEntry, MatchEvent,
+    Operation, PlayerCard, PlayerProfile, Wager, DAILY_XP, DAILY_COINS, WELCOME_XP, 
+    WELCOME_COINS, DAY_MICROS,
 };
 use self::state::KickoffArcadeState;
 
@@ -26,10 +28,10 @@ impl WithContractAbi for KickoffArcadeContract {
 }
 
 impl Contract for KickoffArcadeContract {
-    type Message = ();
+    type Message = CrossChainMessage;
     type Parameters = ();
     type InstantiationArgument = ();
-    type EventValue = ();
+    type EventValue = MatchEvent;
 
     async fn load(runtime: ContractRuntime<Self>) -> Self {
         let state = KickoffArcadeState::load(runtime.root_view_storage_context())
@@ -42,19 +44,50 @@ impl Contract for KickoffArcadeContract {
         self.runtime.application_parameters();
         self.state.leaderboard.set(Vec::new());
         self.state.total_minted.set(0);
+        self.state.subscribed_to.set(None);
     }
 
     async fn execute_operation(&mut self, operation: Self::Operation) -> Self::Response {
         let owner = self.owner_id();
+        let timestamp = self.runtime.system_time().micros();
 
         match operation {
             Operation::RegisterPlayer => {
                 if self.state.players.get(&owner).await.unwrap().is_none() {
-                    self.state
-                        .players
-                        .insert(&owner, PlayerProfile::default())
-                        .unwrap();
+                    // Welcome bonus for new players
+                    let profile = PlayerProfile {
+                        xp: WELCOME_XP,
+                        coins: WELCOME_COINS,
+                        level: 1,
+                        last_daily_claim: timestamp,
+                        ..Default::default()
+                    };
+                    self.state.players.insert(&owner, profile.clone()).unwrap();
+                    self.update_leaderboard(&owner, &profile).await;
                 }
+            }
+
+            Operation::ClaimDailyReward => {
+                let mut profile = self
+                    .state
+                    .players
+                    .get(&owner)
+                    .await
+                    .unwrap()
+                    .unwrap_or_default();
+
+                // Check if 24 hours have passed
+                assert!(
+                    timestamp.saturating_sub(profile.last_daily_claim) >= DAY_MICROS,
+                    "Daily reward already claimed"
+                );
+
+                profile.xp += DAILY_XP;
+                profile.coins += DAILY_COINS;
+                profile.last_daily_claim = timestamp;
+                profile.level = calculate_level(profile.xp);
+                self.state.players.insert(&owner, profile.clone()).unwrap();
+                self.update_leaderboard(&owner, &profile).await;
             }
 
             Operation::RecordMatch { home_score, away_score } => {
@@ -86,7 +119,6 @@ impl Contract for KickoffArcadeContract {
             }
 
             Operation::ForfeitMatch => {
-                // XP and coin penalty for quitting any match
                 let xp_penalty: u64 = 50;
                 let coin_penalty: u64 = 25;
 
@@ -138,7 +170,6 @@ impl Contract for KickoffArcadeContract {
             }
 
             Operation::CreateWager { lobby_id, amount } => {
-                // Verify player has enough coins
                 let mut profile = self
                     .state
                     .players
@@ -149,53 +180,42 @@ impl Contract for KickoffArcadeContract {
 
                 assert!(profile.coins >= amount, "Insufficient coins for wager");
 
-                // Deduct coins (escrow)
                 profile.coins -= amount;
                 self.state.players.insert(&owner, profile).unwrap();
 
-                // Create wager
                 let wager = Wager {
                     lobby_id: lobby_id.clone(),
-                    host: owner,
+                    host: owner.clone(),
+                    host_chain: self.runtime.chain_id().to_string(),
                     guest: String::new(),
+                    guest_chain: String::new(),
                     amount,
-                    status: 0, // pending
+                    status: 0,
                     winner: String::new(),
+                    created_at: timestamp,
                 };
                 self.state.wagers.insert(&lobby_id, wager).unwrap();
+
+                // Emit event for real-time updates
+                self.runtime.emit(
+                    StreamName::from(format!("match_{}", lobby_id)),
+                    &MatchEvent::WagerCreated { lobby_id, host: owner, amount },
+                );
             }
 
-            Operation::AcceptWager { lobby_id } => {
-                let mut wager = self
-                    .state
-                    .wagers
-                    .get(&lobby_id)
-                    .await
-                    .unwrap()
-                    .expect("Wager not found");
-
-                assert!(wager.status == 0, "Wager not pending");
-                assert!(wager.host != owner, "Cannot accept own wager");
-
-                // Verify guest has enough coins
-                let mut profile = self
-                    .state
-                    .players
-                    .get(&owner)
-                    .await
-                    .unwrap()
-                    .unwrap_or_default();
-
-                assert!(profile.coins >= wager.amount, "Insufficient coins for wager");
-
-                // Deduct coins (escrow)
-                profile.coins -= wager.amount;
-                self.state.players.insert(&owner, profile).unwrap();
-
-                // Update wager
-                wager.guest = owner;
-                wager.status = 1; // accepted
-                self.state.wagers.insert(&lobby_id, wager).unwrap();
+            Operation::AcceptWager { lobby_id, host_chain_id } => {
+                // Send join request to host chain
+                if let Ok(host_chain) = host_chain_id.parse::<ChainId>() {
+                    let message = CrossChainMessage::JoinWager {
+                        guest_chain_id: self.runtime.chain_id(),
+                        guest_address: owner,
+                        lobby_id,
+                    };
+                    self.runtime.send_message(host_chain, message);
+                    
+                    // Track subscription
+                    self.state.subscribed_to.set(Some(host_chain_id));
+                }
             }
 
             Operation::CancelWager { lobby_id } => {
@@ -210,7 +230,12 @@ impl Contract for KickoffArcadeContract {
                 assert!(wager.status == 0, "Can only cancel pending wager");
                 assert!(wager.host == owner, "Only host can cancel");
 
-                // Refund host
+                // Check for timeout (5 minutes)
+                let timeout = 300_000_000u64; // 5 min in microseconds
+                if timestamp.saturating_sub(wager.created_at) > timeout {
+                    // Auto-cancel expired wager
+                }
+
                 let mut profile = self
                     .state
                     .players
@@ -221,9 +246,8 @@ impl Contract for KickoffArcadeContract {
                 profile.coins += wager.amount;
                 self.state.players.insert(&owner, profile).unwrap();
 
-                // Mark cancelled
                 let mut wager = wager;
-                wager.status = 3; // cancelled
+                wager.status = 3;
                 self.state.wagers.insert(&lobby_id, wager).unwrap();
             }
 
@@ -239,10 +263,9 @@ impl Contract for KickoffArcadeContract {
                 assert!(wager.status == 1, "Wager not in accepted state");
 
                 let total_pot = wager.amount * 2;
-                let fee = total_pot / 20; // 5% fee
+                let fee = total_pot / 20;
                 let winnings = total_pot - fee;
 
-                // Record match for both players
                 let (xp_win, _) = calculate_rewards(
                     if winner == wager.host { home_score } else { away_score },
                     if winner == wager.host { away_score } else { home_score },
@@ -284,10 +307,25 @@ impl Contract for KickoffArcadeContract {
                 self.state.players.insert(loser, loser_profile.clone()).unwrap();
                 self.update_leaderboard(loser, &loser_profile).await;
 
-                // Mark resolved
                 wager.status = 2;
-                wager.winner = winner;
-                self.state.wagers.insert(&lobby_id, wager).unwrap();
+                wager.winner = winner.clone();
+                self.state.wagers.insert(&lobby_id, wager.clone()).unwrap();
+
+                // Notify guest chain
+                if let Ok(guest_chain) = wager.guest_chain.parse::<ChainId>() {
+                    self.runtime.send_message(guest_chain, CrossChainMessage::MatchEnded {
+                        lobby_id: lobby_id.clone(),
+                        winner: winner.clone(),
+                        home_score,
+                        away_score,
+                    });
+                }
+
+                // Emit event
+                self.runtime.emit(
+                    StreamName::from(format!("match_{}", lobby_id)),
+                    &MatchEvent::MatchEnded { lobby_id, winner, scores: (home_score, away_score) },
+                );
             }
 
             Operation::ForfeitWager { lobby_id } => {
@@ -301,7 +339,6 @@ impl Contract for KickoffArcadeContract {
 
                 assert!(wager.status == 1, "Wager not in accepted state");
 
-                // Determine who forfeited and who wins
                 let forfeiter = owner.clone();
                 let winner = if forfeiter == wager.host { 
                     wager.guest.clone() 
@@ -309,10 +346,8 @@ impl Contract for KickoffArcadeContract {
                     wager.host.clone() 
                 };
 
-                // XP penalty for forfeiting (lose 50 XP)
                 let xp_penalty: u64 = 50;
                 
-                // Forfeiter loses their stake + XP penalty
                 let mut forfeiter_profile = self
                     .state
                     .players
@@ -327,7 +362,6 @@ impl Contract for KickoffArcadeContract {
                 self.state.players.insert(&forfeiter, forfeiter_profile.clone()).unwrap();
                 self.update_leaderboard(&forfeiter, &forfeiter_profile).await;
 
-                // Winner gets the full pot (no fee on forfeit)
                 let total_pot = wager.amount * 2;
                 let mut winner_profile = self
                     .state
@@ -337,22 +371,120 @@ impl Contract for KickoffArcadeContract {
                     .unwrap()
                     .unwrap_or_default();
                 winner_profile.coins += total_pot;
-                winner_profile.xp += 100; // Win XP
+                winner_profile.xp += 100;
                 winner_profile.matches_played += 1;
                 winner_profile.wins += 1;
                 winner_profile.level = calculate_level(winner_profile.xp);
                 self.state.players.insert(&winner, winner_profile.clone()).unwrap();
                 self.update_leaderboard(&winner, &winner_profile).await;
 
-                // Mark as resolved (forfeit)
                 wager.status = 2;
-                wager.winner = winner;
-                self.state.wagers.insert(&lobby_id, wager).unwrap();
+                wager.winner = winner.clone();
+                self.state.wagers.insert(&lobby_id, wager.clone()).unwrap();
+
+                // Notify other player
+                let other_chain = if forfeiter == wager.host { &wager.guest_chain } else { &wager.host_chain };
+                if let Ok(chain) = other_chain.parse::<ChainId>() {
+                    self.runtime.send_message(chain, CrossChainMessage::MatchEnded {
+                        lobby_id: lobby_id.clone(),
+                        winner,
+                        home_score: 0,
+                        away_score: 3, // Forfeit score
+                    });
+                }
+            }
+
+            Operation::LeaveMatch { lobby_id } => {
+                // Notify host of disconnect
+                if let Some(host_chain) = self.state.subscribed_to.get().clone() {
+                    if let Ok(chain) = host_chain.parse::<ChainId>() {
+                        self.runtime.send_message(chain, CrossChainMessage::PlayerDisconnected {
+                            lobby_id,
+                            player: owner,
+                            timestamp,
+                        });
+                    }
+                }
+                self.state.subscribed_to.set(None);
             }
         }
     }
 
-    async fn execute_message(&mut self, _message: Self::Message) {}
+    async fn execute_message(&mut self, message: Self::Message) {
+        match message {
+            CrossChainMessage::JoinWager { guest_chain_id, guest_address, lobby_id } => {
+                if let Some(mut wager) = self.state.wagers.get(&lobby_id).await.unwrap() {
+                    if wager.status == 0 {
+                        wager.guest = guest_address.clone();
+                        wager.guest_chain = guest_chain_id.to_string();
+                        wager.status = 1;
+                        self.state.wagers.insert(&lobby_id, wager.clone()).unwrap();
+
+                        let ts = self.runtime.system_time().micros();
+                        self.runtime.send_message(guest_chain_id, CrossChainMessage::WagerAccepted {
+                            wager: wager.clone(),
+                            timestamp: ts,
+                        });
+
+                        self.runtime.emit(
+                            StreamName::from(format!("match_{}", lobby_id)),
+                            &MatchEvent::PlayerJoined { lobby_id: lobby_id.clone(), guest: guest_address.clone() },
+                        );
+                        self.runtime.emit(
+                            StreamName::from(format!("match_{}", lobby_id)),
+                            &MatchEvent::MatchStarted { lobby_id, host: wager.host, guest: guest_address },
+                        );
+                    }
+                }
+            }
+
+            CrossChainMessage::WagerAccepted { wager, timestamp: _ } => {
+                let mut profile = self
+                    .state
+                    .players
+                    .get(&wager.guest)
+                    .await
+                    .unwrap()
+                    .unwrap_or_default();
+
+                if profile.coins >= wager.amount {
+                    profile.coins -= wager.amount;
+                    self.state.players.insert(&wager.guest, profile).unwrap();
+                    let lobby_id = wager.lobby_id.clone();
+                    self.state.wagers.insert(&lobby_id, wager).unwrap();
+                }
+            }
+
+            CrossChainMessage::MatchEnded { lobby_id, winner, home_score: _, away_score: _ } => {
+                if let Some(mut wager) = self.state.wagers.get(&lobby_id).await.unwrap() {
+                    wager.status = 2;
+                    wager.winner = winner;
+                    self.state.wagers.insert(&lobby_id, wager).unwrap();
+                }
+                self.state.subscribed_to.set(None);
+            }
+
+            CrossChainMessage::PlayerDisconnected { lobby_id, player: _, timestamp: _ } => {
+                if let Some(wager) = self.state.wagers.get(&lobby_id).await.unwrap() {
+                    if wager.status == 1 {
+                        // Player disconnected during active match - could implement reconnect grace period
+                    }
+                }
+            }
+
+            CrossChainMessage::ScoreUpdate { lobby_id, home_score, away_score, timestamp: _ } => {
+                // Emit for real-time UI updates
+                self.runtime.emit(
+                    StreamName::from(format!("match_{}", lobby_id)),
+                    &MatchEvent::GoalScored { 
+                        lobby_id, 
+                        team: if home_score > away_score { "home".into() } else { "away".into() },
+                        score: (home_score, away_score),
+                    },
+                );
+            }
+        }
+    }
 
     async fn store(mut self) {
         self.state.save().await.expect("Failed to save state");

@@ -197,8 +197,8 @@ export class GamePhysics {
         accuracy = 0.85;
         break;
       case "tackle":
-        force = 0.12 + power * 0.12;
-        accuracy = 0.55;
+        force = 0.2 + power * 0.25;
+        accuracy = 0.5;
         break;
       default:
         force = 0.25;
@@ -217,24 +217,59 @@ export class GamePhysics {
 
     if (this.ballOwner) this.lastBallOwner = this.ballOwner;
     this.ballOwner = null;
-    this.kickCooldown = 12;
+    this.kickCooldown = 25; // Longer cooldown to prevent immediate re-acquisition
   }
 
   slideTackle(playerId: string, targetAngle: number): { success: boolean; foul: boolean } {
     const body = this.players.get(playerId);
     if (!body) return { success: false, foul: false };
 
-    const lungeForce = planck.Vec2(Math.cos(targetAngle) * 0.6, Math.sin(targetAngle) * 0.6);
+    // Stronger lunge
+    const lungeForce = planck.Vec2(Math.cos(targetAngle) * 1.2, Math.sin(targetAngle) * 1.2);
     body.applyLinearImpulse(lungeForce, body.getWorldCenter(), true);
 
     const ballPos = this.ball.getPosition();
     const playerPos = body.getPosition();
     const distToBall = Math.sqrt(Math.pow(ballPos.x - playerPos.x, 2) + Math.pow(ballPos.y - playerPos.y, 2)) * SCALE;
 
-    if (distToBall < PLAYER_RADIUS + BALL_RADIUS + 5) {
-      this.kick({ type: "tackle", power: 0.4, targetAngle });
+    // Check if tackling another player first (foul detection)
+    let tackledPlayer: string | null = null;
+    let tackledPlayerDist = Infinity;
+    this.players.forEach((otherBody, otherId) => {
+      if (otherId === playerId) return;
+      const otherPos = otherBody.getPosition();
+      const dist = Math.sqrt(Math.pow(otherPos.x - playerPos.x, 2) + Math.pow(otherPos.y - playerPos.y, 2)) * SCALE;
+      if (dist < PLAYER_RADIUS * 2 + 8 && dist < tackledPlayerDist) {
+        tackledPlayer = otherId;
+        tackledPlayerDist = dist;
+      }
+    });
+
+    // Got the ball cleanly
+    if (distToBall < PLAYER_RADIUS + BALL_RADIUS + 12) {
+      const kickAngle = this.ballOwner ? targetAngle + Math.PI : targetAngle;
+      this.kick({ type: "tackle", power: 0.7, targetAngle: kickAngle });
+      this.ballOwner = null;
       this.onCollision?.("tackle");
       return { success: true, foul: false };
+    }
+
+    // Tackled a player
+    if (tackledPlayer) {
+      // If they have the ball and we're close to ball, clean tackle
+      if (this.ballOwner === tackledPlayer && distToBall < PLAYER_RADIUS + BALL_RADIUS + 15) {
+        const angleToBall = Math.atan2(ballPos.y - playerPos.y, ballPos.x - playerPos.x);
+        this.kick({ type: "tackle", power: 0.6, targetAngle: angleToBall + Math.PI });
+        this.ballOwner = null;
+        this.onCollision?.("tackle");
+        return { success: true, foul: false };
+      }
+      
+      // Missed the ball but hit the player = FOUL
+      if (tackledPlayerDist < PLAYER_RADIUS * 2 + 4) {
+        this.onFoul?.(playerId);
+        return { success: false, foul: true };
+      }
     }
 
     return { success: false, foul: false };
@@ -242,20 +277,34 @@ export class GamePhysics {
 
   standingTackle(playerId: string): boolean {
     const body = this.players.get(playerId);
-    if (!body || !this.ballOwner || this.ballOwner === playerId) return false;
-
-    const ownerBody = this.players.get(this.ballOwner);
-    if (!ownerBody) return false;
+    if (!body) return false;
 
     const playerPos = body.getPosition();
-    const ownerPos = ownerBody.getPosition();
-    const dist = Math.sqrt(Math.pow(ownerPos.x - playerPos.x, 2) + Math.pow(ownerPos.y - playerPos.y, 2)) * SCALE;
+    const ballPos = this.ball.getPosition();
+    const distToBall = Math.sqrt(Math.pow(ballPos.x - playerPos.x, 2) + Math.pow(ballPos.y - playerPos.y, 2)) * SCALE;
 
-    if (dist < PLAYER_RADIUS * 2 + 3) {
-      if (Math.random() < 0.45) {
-        const angle = Math.atan2(ownerPos.y - playerPos.y, ownerPos.x - playerPos.x);
-        this.kick({ type: "tackle", power: 0.25, targetAngle: angle + Math.PI });
-        this.ballOwner = null;
+    // Can tackle loose ball or ball carrier
+    if (distToBall < PLAYER_RADIUS + BALL_RADIUS + 10) {
+      if (this.ballOwner && this.ballOwner !== playerId) {
+        const ownerBody = this.players.get(this.ballOwner);
+        if (ownerBody) {
+          const ownerPos = ownerBody.getPosition();
+          const distToOwner = Math.sqrt(Math.pow(ownerPos.x - playerPos.x, 2) + Math.pow(ownerPos.y - playerPos.y, 2)) * SCALE;
+          
+          // Higher success rate when close to ball carrier
+          if (distToOwner < PLAYER_RADIUS * 2 + 6) {
+            if (Math.random() < 0.65) {
+              const angle = Math.atan2(playerPos.y - ownerPos.y, playerPos.x - ownerPos.x);
+              this.kick({ type: "tackle", power: 0.4, targetAngle: angle });
+              this.ballOwner = null;
+              this.onCollision?.("tackle");
+              return true;
+            }
+          }
+        }
+      } else if (!this.ballOwner) {
+        // Win loose ball
+        this.ballOwner = playerId;
         return true;
       }
     }
@@ -358,6 +407,37 @@ export class GamePhysics {
     if (this.outOfBoundsCooldown > 0) this.outOfBoundsCooldown--;
     if (this.kickCooldown > 0) this.kickCooldown--;
 
+    // Anti-stuck: Check if ball is moving too slowly and has an owner
+    const ballVel = this.ball.getLinearVelocity();
+    const ballSpeed = ballVel.length();
+    
+    // If ball is nearly stopped but someone "owns" it, release ownership so others can get it
+    if (ballSpeed < 0.05 && this.ballOwner) {
+      const ownerBody = this.players.get(this.ballOwner);
+      if (ownerBody) {
+        const ownerPos = ownerBody.getPosition();
+        const ballPos = this.ball.getPosition();
+        const dist = Math.sqrt(Math.pow(ownerPos.x - ballPos.x, 2) + Math.pow(ownerPos.y - ballPos.y, 2)) * SCALE;
+        // If owner is too far from ball, release ownership
+        if (dist > PLAYER_RADIUS + BALL_RADIUS + 5) {
+          this.ballOwner = null;
+        }
+      }
+    }
+
+    // Anti-stuck: Nudge ball if it's completely stopped in play
+    if (ballSpeed < 0.01 && !this.goalScored && this.outOfBoundsCooldown === 0) {
+      const ballPos = this.ball.getPosition();
+      const ballX = ballPos.x * SCALE;
+      const ballY = ballPos.y * SCALE;
+      // Only nudge if ball is in valid play area
+      if (ballX > 5 && ballX < FIELD_WIDTH - 5 && ballY > 5 && ballY < FIELD_HEIGHT - 5) {
+        // Small random nudge to unstick
+        const nudge = planck.Vec2((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.02);
+        this.ball.applyLinearImpulse(nudge, this.ball.getWorldCenter(), true);
+      }
+    }
+
     // Check for goal
     const goal = this.checkGoal();
     if (goal) {
@@ -368,6 +448,14 @@ export class GamePhysics {
     const ballPos = this.ball.getPosition();
     const ballX = ballPos.x * SCALE;
     const ballY = ballPos.y * SCALE;
+
+    // Anti-stuck: Force ball back in bounds if it somehow got outside
+    const maxX = FIELD_WIDTH + 10;
+    const maxY = FIELD_HEIGHT + 5;
+    if (ballX < -10 || ballX > maxX || ballY < -5 || ballY > maxY) {
+      this.placeBall(FIELD_WIDTH / 2, FIELD_HEIGHT / 2);
+      return;
+    }
 
     // Out of bounds check
     const margin = 3;

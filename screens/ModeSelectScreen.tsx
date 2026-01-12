@@ -1,6 +1,6 @@
 import React from "react";
 import { useGame } from "../context/GameContext";
-import { ScreenName, GameMode } from "../types";
+import { ScreenName, GameMode, Difficulty } from "../types";
 import {
   ChevronLeft,
   User,
@@ -9,11 +9,12 @@ import {
   Zap,
   Globe,
   Clock,
+  Gauge,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export const ModeSelectScreen: React.FC = () => {
-  const { setScreen, setGameMode, matchDuration, setMatchDuration } = useGame();
+  const { setScreen, setGameMode, matchDuration, setMatchDuration, difficulty, setDifficulty } = useGame();
 
   const handleSelectMode = (mode: GameMode) => {
     setGameMode(mode);
@@ -29,6 +30,12 @@ export const ModeSelectScreen: React.FC = () => {
     { label: "5 MINS", value: 300 },
     { label: "10 MINS", value: 600 },
     { label: "30 MINS", value: 1800 },
+  ];
+
+  const difficulties: { label: string; value: Difficulty; color: string }[] = [
+    { label: "EASY", value: "easy", color: "bg-green-600 border-green-400 shadow-green-500/40" },
+    { label: "MEDIUM", value: "medium", color: "bg-yellow-600 border-yellow-400 shadow-yellow-500/40" },
+    { label: "HARD", value: "hard", color: "bg-red-600 border-red-400 shadow-red-500/40" },
   ];
 
   const modes = [
@@ -120,6 +127,39 @@ export const ModeSelectScreen: React.FC = () => {
                   className={`py-4 rounded-2xl border-2 font-arcade font-bold italic transition-all active:scale-95 ${
                     matchDuration === d.value
                       ? "bg-blue-600 border-blue-400 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+                      : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Difficulty Selector */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/10"
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-orange-500/20 rounded-lg">
+                <Gauge className="w-5 h-5 text-orange-400" />
+              </div>
+              <h3 className="text-sm font-black text-white uppercase tracking-[0.2em]">
+                AI Difficulty
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {difficulties.map((d) => (
+                <button
+                  key={d.value}
+                  onClick={() => setDifficulty(d.value)}
+                  className={`py-4 rounded-2xl border-2 font-arcade font-bold italic transition-all active:scale-95 ${
+                    difficulty === d.value
+                      ? `${d.color} text-white shadow-[0_0_20px]`
                       : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
                   }`}
                 >

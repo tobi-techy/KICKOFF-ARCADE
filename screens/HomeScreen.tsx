@@ -11,13 +11,13 @@ import {
   ChevronRight,
   Activity,
   Cpu,
-  Wallet,
+  LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export const HomeScreen: React.FC = () => {
   const { setScreen, walletAddress, connectWallet } = useGame();
-  const { ready, authenticated, chainId } = useLineraWallet();
+  const { ready, authenticated, chainId, logout } = useLineraWallet();
 
   // Sync Linera auth state with game context on load
   useEffect(() => {
@@ -70,10 +70,10 @@ export const HomeScreen: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-white/10">
+          <div className="hidden sm:flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-blue-500/30">
             <Globe className="w-3 h-3 text-blue-400 animate-spin-slow" />
-            <span className="text-[9px] font-black text-white/80 uppercase tracking-widest">
-              Linera Testnet
+            <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">
+              Linera Conway
             </span>
           </div>
         </div>
@@ -206,6 +206,14 @@ export const HomeScreen: React.FC = () => {
                   {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
                 </span>
               </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={logout}
+                className="py-4 px-4 glass-morphism rounded-2xl border border-red-500/30 flex items-center justify-center hover:bg-red-500/10 transition-all"
+              >
+                <LogOut className="w-4 h-4 text-red-400" />
+              </motion.button>
             </div>
           )}
         </div>

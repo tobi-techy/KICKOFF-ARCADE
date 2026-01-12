@@ -26,7 +26,7 @@ A real-time football arcade game built on **Linera blockchain**, featuring on-ch
 
 ## 🔗 Live Demo
 
-**Application ID:** `0db11f239706aa1024d0d530d933b510530a88f13b50ca0e3c914c7c9aef336e`
+**Application ID:** `870548fc630a2ded1af86fd0ef5fd77a140afcbdc59280d8925224d84b775778`
 
 **Chain ID:** `17ef7b84785e23ecb8d93fba80fc8e54e943b2c1c333f6a1c9245e98d957e894`
 
@@ -88,10 +88,14 @@ A real-time football arcade game built on **Linera blockchain**, featuring on-ch
 | Draw | 50 | 20 |
 | Loss | 25 | 10 |
 | Forfeit | -50 | -25 |
+| **Welcome Bonus** | 100 | 500 |
+| **Daily Reward** | 50 | 100 |
 
 **Level Calculation:** `Level = (Total XP / 500) + 1`
 
 **Wager Winnings:** Winner receives 95% of total pot (5% protocol fee)
+
+**Daily Rewards:** Claim once every 24 hours from the Rewards screen
 
 ## 🚀 Quick Start
 
@@ -100,7 +104,49 @@ A real-time football arcade game built on **Linera blockchain**, featuring on-ch
 - Rust with `wasm32-unknown-unknown` target
 - Linera CLI tools (v0.15.8)
 
-### Install Dependencies
+### 1. Install Linera CLI
+
+```bash
+# Install Linera CLI
+cargo install linera-service@0.15.8
+
+# Add WASM target
+rustup target add wasm32-unknown-unknown
+
+# Initialize wallet (creates ~/.linera)
+linera wallet init --faucet https://faucet.testnet-conway.linera.net
+
+# Request a chain
+linera wallet request-chain --faucet https://faucet.testnet-conway.linera.net
+```
+
+### 2. Build & Deploy Smart Contracts
+
+```bash
+# Build contracts
+cd linera
+cargo build --release --target wasm32-unknown-unknown
+
+# Deploy to testnet (save the Application ID output)
+linera publish-and-create \
+  target/wasm32-unknown-unknown/release/kickoff_arcade_contract.wasm \
+  target/wasm32-unknown-unknown/release/kickoff_arcade_service.wasm \
+  --json-argument "null"
+```
+
+### 3. Configure Environment
+
+```bash
+# Backend (.env in /backend)
+PORT=3001
+APPLICATION_ID=<your-application-id-from-deploy>
+CHAIN_ID=<your-chain-id>
+
+# Frontend (.env.local in root)
+VITE_API_URL=http://localhost:3001
+```
+
+### 4. Install Dependencies
 
 ```bash
 # Frontend
@@ -110,22 +156,43 @@ npm install
 cd backend && npm install
 ```
 
-### Run Locally
+### 5. Run the App
 
 ```bash
-# Terminal 1: Start backend
+# Terminal 1: Start backend (auto-starts linera service on port 8080)
 cd backend && npm start
 
 # Terminal 2: Start frontend
 npm run dev
 ```
 
-### Build Linera Contracts
+Open http://localhost:5173 in your browser.
 
-```bash
-cd linera
-cargo build --release --target wasm32-unknown-unknown
-```
+### Testing Game Modes
+
+**Single Player:**
+1. Click "Connect Wallet" on home screen
+2. Select "Single Player" → Choose difficulty → Pick team
+3. Play match with keyboard controls
+
+**Multiplayer (Local Testing):**
+1. Start the app in two browser windows
+2. Window 1: Create multiplayer lobby, set wager amount
+3. Window 2: Join via the lobby link or enter lobby code
+4. Both players select teams → Match starts
+
+**Rewards/Profile:**
+- After matches, XP and coins are recorded on-chain
+- View stats on the Rewards screen
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `linera service` not found | Run `cargo install linera-service@0.15.8` |
+| Port 8080 in use | Kill existing linera service: `pkill -f "linera service"` |
+| Wallet not connecting | Clear localStorage and reconnect |
+| Backend won't start | Ensure `.env` has valid APPLICATION_ID and CHAIN_ID |
 
 ### Deploy to Testnet Conway
 
