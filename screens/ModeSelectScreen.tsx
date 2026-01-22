@@ -18,8 +18,9 @@ export const ModeSelectScreen: React.FC = () => {
 
   const handleSelectMode = (mode: GameMode) => {
     setGameMode(mode);
-    if (mode === GameMode.MULTIPLAYER) {
-      // Go to team select first, then lobby
+    if (mode === GameMode.TOURNAMENT) {
+      setScreen(ScreenName.TOURNAMENT);
+    } else if (mode === GameMode.MULTIPLAYER) {
       setScreen(ScreenName.TEAM_SELECT);
     } else {
       setScreen(ScreenName.TEAM_SELECT);

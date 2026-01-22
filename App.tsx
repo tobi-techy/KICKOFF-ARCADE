@@ -14,6 +14,8 @@ import { MatchResultScreen } from "./screens/MatchResultScreen";
 import { WalletScreen } from "./screens/WalletScreen";
 import { RewardsScreen } from "./screens/RewardsScreen";
 import { MultiplayerLobbyScreen } from "./screens/MultiplayerLobbyScreen";
+import { LeaderboardScreen } from "./screens/LeaderboardScreen";
+import { TournamentScreen } from "./screens/TournamentScreen";
 
 const ScreenRouter = () => {
   const { currentScreen, setScreen, setGameMode, setLobby } = useGame();
@@ -57,6 +59,10 @@ const ScreenRouter = () => {
         return <WalletScreen />;
       case ScreenName.REWARDS:
         return <RewardsScreen />;
+      case ScreenName.LEADERBOARD:
+        return <LeaderboardScreen />;
+      case ScreenName.TOURNAMENT:
+        return <TournamentScreen />;
       case ScreenName.MULTIPLAYER_LOBBY:
         return <MultiplayerLobbyScreen />;
       default:

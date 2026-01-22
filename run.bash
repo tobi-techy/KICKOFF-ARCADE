@@ -9,7 +9,10 @@ export LINERA_FAUCET_URL=http://localhost:8080
 
 # Initialize wallet
 linera wallet init --faucet="$LINERA_FAUCET_URL"
-linera wallet request-chain --faucet="$LINERA_FAUCET_URL"
+
+# Request a chain and capture the output
+REQUEST_OUTPUT=$(linera wallet request-chain --faucet="$LINERA_FAUCET_URL" 2>&1)
+USER_CHAIN_ID=$(echo "$REQUEST_OUTPUT" | grep -oE '^[a-f0-9]{64}' | head -1)
 
 # Build contracts
 cd /build/linera
@@ -23,7 +26,7 @@ DEPLOY_OUTPUT=$(linera publish-and-create \
   --json-argument "null" 2>&1)
 
 APPLICATION_ID=$(echo "$DEPLOY_OUTPUT" | tail -1)
-CHAIN_ID=$(linera wallet show | grep -oE '[a-f0-9]{64}' | head -1)
+CHAIN_ID=$USER_CHAIN_ID
 OWNER_ADDRESS=$(linera wallet show | grep -oE '0x[a-f0-9]{64}' | head -1)
 
 echo "=========================================="

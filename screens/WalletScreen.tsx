@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export const WalletScreen: React.FC = () => {
   const { setScreen, connectWallet } = useGame();
-  const { ready, authenticated, chainId, needsUsername, loading, login, completeRegistration } = useLineraWallet();
+  const { ready, authenticated, chainId, playerAddress, needsUsername, loading, login, completeRegistration } = useLineraWallet();
   const [isConnecting, setIsConnecting] = useState(false);
   const [terminalStep, setTerminalStep] = useState(0);
   const [connectionComplete, setConnectionComplete] = useState(false);
@@ -33,23 +33,23 @@ export const WalletScreen: React.FC = () => {
   // Watch for successful authentication (only redirect if registered)
   useEffect(() => {
     // Wait until loading is done to know the final needsUsername state
-    if (isConnecting && authenticated && chainId && !loading && !needsUsername) {
+    if (isConnecting && authenticated && playerAddress && !loading && !needsUsername) {
       // User authenticated and already registered, complete the flow
       setTerminalStep(logs.length);
       setTimeout(() => {
-        connectWallet(chainId);
+        connectWallet(playerAddress);
         setConnectionComplete(true);
         setTimeout(() => {
           setScreen(ScreenName.REWARDS);
         }, 1000);
       }, 500);
     }
-  }, [authenticated, chainId, isConnecting, needsUsername, loading]);
+  }, [authenticated, playerAddress, isConnecting, needsUsername, loading]);
 
   const handleUsernameSubmit = async (username: string) => {
     const success = await completeRegistration(username);
     if (success) {
-      connectWallet(chainId!);
+      connectWallet(playerAddress!);
       setConnectionComplete(true);
       setTimeout(() => {
         setScreen(ScreenName.REWARDS);
@@ -211,7 +211,7 @@ export const WalletScreen: React.FC = () => {
                     className="flex items-center gap-3 text-[10px] text-green-400 font-bold"
                   >
                     <CheckCircle className="w-4 h-4" />
-                    CONNECTION ESTABLISHED - {chainId?.slice(0, 8)}...
+                    CONNECTION ESTABLISHED - {playerAddress?.slice(0, 10)}...
                   </motion.div>
                 )}
               </div>

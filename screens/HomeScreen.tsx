@@ -13,19 +13,20 @@ import {
   Activity,
   Cpu,
   LogOut,
+  Medal,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export const HomeScreen: React.FC = () => {
   const { setScreen, walletAddress, connectWallet } = useGame();
-  const { ready, authenticated, chainId, needsUsername, loading, completeRegistration, logout } = useLineraWallet();
+  const { ready, authenticated, chainId, playerAddress, needsUsername, loading, completeRegistration, logout } = useLineraWallet();
 
   // Sync Linera auth state with game context on load
   useEffect(() => {
-    if (ready && authenticated && chainId && !walletAddress) {
-      connectWallet(chainId);
+    if (ready && authenticated && playerAddress && !walletAddress) {
+      connectWallet(playerAddress);
     }
-  }, [ready, authenticated, chainId, walletAddress, connectWallet]);
+  }, [ready, authenticated, playerAddress, walletAddress, connectWallet]);
 
   const handleUsernameSubmit = async (username: string) => {
     await completeRegistration(username);
@@ -207,12 +208,17 @@ export const HomeScreen: React.FC = () => {
                   Rewards
                 </span>
               </motion.button>
-              <div className="flex-1 py-4 glass-morphism rounded-2xl border border-green-500/30 flex items-center justify-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_#22c55e]" />
-                <span className="text-[10px] font-arcade font-bold text-green-400 uppercase tracking-widest">
-                  {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setScreen(ScreenName.LEADERBOARD)}
+                className="flex-1 py-4 glass-morphism rounded-2xl border border-blue-500/30 flex items-center justify-center gap-2 hover:bg-blue-500/10 transition-all"
+              >
+                <Medal className="w-4 h-4 text-blue-400" />
+                <span className="text-[10px] font-arcade font-bold text-blue-400 uppercase tracking-widest">
+                  Rankings
                 </span>
-              </div>
+              </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
