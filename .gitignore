@@ -32,3 +32,4 @@ backend/.env
 # Rust/Linera
 linera/target/
 *.wasm
+.vercel

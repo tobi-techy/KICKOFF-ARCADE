@@ -20,7 +20,7 @@ import {
 import { motion } from "framer-motion";
 import { useLineraWallet } from "../lib/useLineraWallet";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001";
 const DAY_MS = 86_400_000; // 24 hours in milliseconds
 
 export const RewardsScreen: React.FC = () => {
@@ -55,14 +55,35 @@ export const RewardsScreen: React.FC = () => {
     if (!canClaimDaily || claiming) return;
     setClaiming(true);
     try {
+      // Ensure player is registered first
+      if (!profile) {
+        console.error("Profile not loaded");
+        setClaiming(false);
+        return;
+      }
+
       const res = await fetch(`${API_URL}/api/linera/daily-reward`, { method: "POST" });
-      if (res.ok) {
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        // Wait for blockchain to sync
+        await new Promise(resolve => setTimeout(resolve, 1000));
         await refreshProfile();
+        // Double refresh to ensure UI updates
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await refreshProfile();
+      } else {
+        console.error("Claim failed:", data.error);
       }
     } catch (e) {
       console.error("Failed to claim daily reward:", e);
     }
     setClaiming(false);
+  };
+
+  const handleLogout = async () => {
+    await refreshProfile(); // Refresh before logout
+    logout();
   };
 
   const containerVariants = {
@@ -120,7 +141,7 @@ export const RewardsScreen: React.FC = () => {
           </div>
           {authenticated && (
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="p-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-xl transition-colors"
             >
               <LogOut className="w-5 h-5 text-red-400" />
@@ -373,7 +394,7 @@ export const RewardsScreen: React.FC = () => {
                 </span>
               </div>
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-full transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5 text-red-400" />

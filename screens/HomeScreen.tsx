@@ -3,6 +3,7 @@ import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
 import { useLineraWallet } from "../lib/useLineraWallet";
+import { UsernameModal } from "../components/UsernameModal";
 import {
   Trophy,
   Zap,
@@ -17,7 +18,7 @@ import { motion } from "framer-motion";
 
 export const HomeScreen: React.FC = () => {
   const { setScreen, walletAddress, connectWallet } = useGame();
-  const { ready, authenticated, chainId, logout } = useLineraWallet();
+  const { ready, authenticated, chainId, needsUsername, loading, completeRegistration, logout } = useLineraWallet();
 
   // Sync Linera auth state with game context on load
   useEffect(() => {
@@ -26,8 +27,14 @@ export const HomeScreen: React.FC = () => {
     }
   }, [ready, authenticated, chainId, walletAddress, connectWallet]);
 
+  const handleUsernameSubmit = async (username: string) => {
+    await completeRegistration(username);
+  };
+
   return (
-    <div className="flex flex-col h-full items-center justify-between bg-[#020617] text-white relative overflow-hidden crt-effect">
+    <>
+      {needsUsername && <UsernameModal onSubmit={handleUsernameSubmit} loading={loading} />}
+      <div className="flex flex-col h-full items-center justify-between bg-[#020617] text-white relative overflow-hidden crt-effect">
       {/* --- BACKGROUND LAYER --- */}
       <div className="absolute inset-0 pointer-events-none">
         {/* Animated Grid Floor */}
@@ -235,5 +242,6 @@ export const HomeScreen: React.FC = () => {
       {/* --- FOOTER DECORATION --- */}
       <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 via-yellow-400 to-orange-600 shadow-[0_0_20px_rgba(234,179,8,0.5)]" />
     </div>
+    </>
   );
 };

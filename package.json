@@ -10,7 +10,6 @@
     "build:linera": "cd linera && cargo build --release --target wasm32-unknown-unknown"
   },
   "dependencies": {
-    "@linera/client": "^0.15.8",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.562.0",
     "nipplejs": "^0.10.2",

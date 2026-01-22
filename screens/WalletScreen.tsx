@@ -3,6 +3,7 @@ import { useGame } from "../context/GameContext";
 import { ScreenName } from "../types";
 import { Button } from "../components/Button";
 import { useLineraWallet } from "../lib/useLineraWallet";
+import { UsernameModal } from "../components/UsernameModal";
 import {
   ChevronLeft,
   Wallet,
@@ -17,7 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export const WalletScreen: React.FC = () => {
   const { setScreen, connectWallet } = useGame();
-  const { ready, authenticated, chainId, login } = useLineraWallet();
+  const { ready, authenticated, chainId, needsUsername, loading, login, completeRegistration } = useLineraWallet();
   const [isConnecting, setIsConnecting] = useState(false);
   const [terminalStep, setTerminalStep] = useState(0);
   const [connectionComplete, setConnectionComplete] = useState(false);
@@ -29,10 +30,11 @@ export const WalletScreen: React.FC = () => {
     "AWAITING USER SIGNATURE...",
   ];
 
-  // Watch for successful authentication
+  // Watch for successful authentication (only redirect if registered)
   useEffect(() => {
-    if (isConnecting && authenticated && chainId) {
-      // User authenticated via Linera, complete the flow
+    // Wait until loading is done to know the final needsUsername state
+    if (isConnecting && authenticated && chainId && !loading && !needsUsername) {
+      // User authenticated and already registered, complete the flow
       setTerminalStep(logs.length);
       setTimeout(() => {
         connectWallet(chainId);
@@ -42,7 +44,18 @@ export const WalletScreen: React.FC = () => {
         }, 1000);
       }, 500);
     }
-  }, [authenticated, chainId, isConnecting]);
+  }, [authenticated, chainId, isConnecting, needsUsername, loading]);
+
+  const handleUsernameSubmit = async (username: string) => {
+    const success = await completeRegistration(username);
+    if (success) {
+      connectWallet(chainId!);
+      setConnectionComplete(true);
+      setTimeout(() => {
+        setScreen(ScreenName.REWARDS);
+      }, 1000);
+    }
+  };
 
   useEffect(() => {
     if (isConnecting && terminalStep < logs.length - 1) {
@@ -64,6 +77,8 @@ export const WalletScreen: React.FC = () => {
   };
 
   return (
+    <>
+      {needsUsername && <UsernameModal onSubmit={handleUsernameSubmit} loading={loading} />}
     <div className="flex flex-col h-full bg-[#020617] p-6 text-white items-center justify-center relative overflow-hidden">
       {/* Holographic Background Elements */}
       <div className="absolute inset-0 pointer-events-none">
@@ -223,6 +238,7 @@ export const WalletScreen: React.FC = () => {
         Linera Labs • Identity Protocol
       </div>
     </div>
+    </>
   );
 };
 

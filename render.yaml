@@ -1,37 +1,9 @@
 services:
-  # Backend - Node.js API (deploy first)
-  - type: web
-    name: kickoff-arcade-api
-    runtime: node
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
-    envVars:
-      - key: PORT
-        value: 10000
-      - key: NODE_ENV
-        value: production
-      - key: FRONTEND_URL
-        sync: false
-      - key: APPLICATION_ID
-        value: 0db11f239706aa1024d0d530d933b510530a88f13b50ca0e3c914c7c9aef336e
-      - key: CHAIN_ID
-        value: 17ef7b84785e23ecb8d93fba80fc8e54e943b2c1c333f6a1c9245e98d957e894
-      - key: LINERA_SERVICE_URL
-        sync: false
-
-  # Frontend - Static Site
   - type: web
     name: kickoff-arcade
     runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
-      - key: VITE_API_URL
-        sync: false
-    headers:
-      - path: /*
-        name: Cross-Origin-Opener-Policy
-        value: same-origin
-      - path: /*
-        name: Cross-Origin-Embedder-Policy
-        value: require-corp
+      - key: NODE_VERSION
+        value: 18

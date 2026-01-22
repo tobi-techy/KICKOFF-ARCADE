@@ -6,12 +6,8 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       server: {
-        port: 3000,
+        port: 5173,
         host: '0.0.0.0',
-        headers: {
-          'Cross-Origin-Opener-Policy': 'same-origin',
-          'Cross-Origin-Embedder-Policy': 'require-corp',
-        },
       },
       plugins: [react()],
       publicDir: 'public',
@@ -23,18 +19,6 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      },
-      optimizeDeps: {
-        exclude: ['@linera/client'],
-      },
-      build: {
-        rollupOptions: {
-          output: {
-            manualChunks: {
-              linera: ['@linera/client'],
-            },
-          },
-        },
       },
     };
 });

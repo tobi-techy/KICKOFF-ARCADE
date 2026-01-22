@@ -6,8 +6,8 @@ const router = Router();
 // Register player
 router.post("/register", async (req, res) => {
   try {
-    const { chainId } = req.body;
-    const result = await lineraService.registerPlayer(chainId);
+    const { chainId, username } = req.body;
+    const result = await lineraService.registerPlayer(chainId, username);
     res.json({ success: true, data: result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -31,6 +31,17 @@ router.post("/match", async (req, res) => {
     }
     
     res.json({ success: true, data: result, rewards: { xpEarned, coinsEarned } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Pay match fee (single player)
+router.post("/match/pay-fee", async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const result = await lineraService.payMatchFee(amount);
+    res.json({ success: true, data: result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -87,6 +98,17 @@ router.get("/wallet", async (req, res) => {
   try {
     const info = await lineraService.getWalletInfo();
     res.json({ success: true, data: info });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Connect wallet (local network mode)
+router.post("/wallet/connect", async (req, res) => {
+  try {
+    const chainId = process.env.CHAIN_ID;
+    const playerAddress = process.env.OWNER_ADDRESS;
+    res.json({ success: true, chainId, playerAddress });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

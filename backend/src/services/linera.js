@@ -1,18 +1,20 @@
 // Linera blockchain integration via local linera service
 import { spawn } from "child_process";
 
-const APP_ID = process.env.APPLICATION_ID;
-const CHAIN_ID = process.env.CHAIN_ID;
-const SERVICE_PORT = process.env.LINERA_SERVICE_PORT || "8080";
-const SERVICE_URL = process.env.LINERA_SERVICE_URL || `http://localhost:${SERVICE_PORT}`;
-
 class LineraService {
   constructor() {
-    this.baseUrl = `${SERVICE_URL}/chains/${CHAIN_ID}/applications/${APP_ID}`;
     this.process = null;
   }
 
+  get baseUrl() {
+    const APP_ID = process.env.APPLICATION_ID;
+    const CHAIN_ID = process.env.CHAIN_ID;
+    const SERVICE_URL = process.env.LINERA_SERVICE_URL || "http://localhost:8080";
+    return `${SERVICE_URL}/chains/${CHAIN_ID}/applications/${APP_ID}`;
+  }
+
   async startService() {
+    const SERVICE_PORT = process.env.LINERA_SERVICE_PORT || "8080";
     return new Promise((resolve) => {
       console.log("Spawning linera service on port", SERVICE_PORT);
       this.process = spawn("linera", ["service", "--port", SERVICE_PORT], {
@@ -51,6 +53,8 @@ class LineraService {
 
   async query(graphqlQuery) {
     try {
+      console.log("Linera query URL:", this.baseUrl);
+      console.log("Linera query:", graphqlQuery);
       const response = await fetch(this.baseUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -58,11 +62,14 @@ class LineraService {
       });
 
       if (!response.ok) {
+        const text = await response.text();
+        console.error("Linera response error:", text);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const result = await response.json();
       if (result.errors) {
+        console.error("GraphQL errors:", result.errors);
         throw new Error(result.errors[0]?.message || "GraphQL error");
       }
       return result;
@@ -77,8 +84,12 @@ class LineraService {
   }
 
   // API Methods
-  async registerPlayer(chainId) {
-    return this.mutate(`mutation { registerPlayer }`);
+  async registerPlayer(chainId, username) {
+    return this.mutate(`mutation { registerPlayer(username: "${username}") }`);
+  }
+
+  async payMatchFee(amount) {
+    return this.mutate(`mutation { payMatchFee(amount: ${amount}) }`);
   }
 
   async recordMatch(homeScore, awayScore) {

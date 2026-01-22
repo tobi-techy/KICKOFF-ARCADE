@@ -1,9 +1,9 @@
 import React from "react";
 import { useLineraWallet } from "../lib/useLineraWallet";
-import { Wallet, LogOut, Loader2, AlertCircle } from "lucide-react";
+import { Wallet, LogOut, Loader2, AlertCircle, Download } from "lucide-react";
 
 export const WalletButton: React.FC = () => {
-  const { ready, authenticated, chainId, loading, error, login, logout, clearError } = useLineraWallet();
+  const { ready, walletAvailable, authenticated, chainId, loading, error, login, logout, clearError } = useLineraWallet();
 
   if (!ready) {
     return (
@@ -59,8 +59,17 @@ export const WalletButton: React.FC = () => {
       onClick={login}
       className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 rounded-xl text-white font-bold text-sm flex items-center gap-2 transition-all shadow-lg shadow-emerald-500/25"
     >
-      <Wallet className="w-4 h-4" />
-      Connect Wallet
+      {walletAvailable ? (
+        <>
+          <Wallet className="w-4 h-4" />
+          Connect Wallet
+        </>
+      ) : (
+        <>
+          <Download className="w-4 h-4" />
+          Install Wallet
+        </>
+      )}
     </button>
   );
 };

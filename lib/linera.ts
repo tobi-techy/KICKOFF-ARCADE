@@ -1,15 +1,16 @@
-// Linera blockchain integration via backend API
+// Linera blockchain integration for local network (dockerized)
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001";
 
 export const LINERA_CONFIG = {
-  faucetUrl: "https://faucet.testnet-conway.linera.net",
-  applicationId: "870548fc630a2ded1af86fd0ef5fd77a140afcbdc59280d8925224d84b775778",
-  chainId: "17ef7b84785e23ecb8d93fba80fc8e54e943b2c1c333f6a1c9245e98d957e894",
-  network: "testnet-conway",
+  faucetUrl: (import.meta as any).env?.VITE_FAUCET_URL || "http://localhost:8080",
+  applicationId: (import.meta as any).env?.VITE_APPLICATION_ID || "",
+  chainId: (import.meta as any).env?.VITE_CHAIN_ID || "",
+  network: "local",
 };
-//dcb4a5413bcbadbb255c592595615c818e7265f8adb28ae75fd6cbb601c28798
+
 export interface PlayerProfile {
+  username: string;
   xp: number;
   coins: number;
   matchesPlayed: number;
@@ -17,6 +18,7 @@ export interface PlayerProfile {
   losses: number;
   draws: number;
   level: number;
+  lastDailyClaim?: number;
 }
 
 export interface PlayerCard {
@@ -33,6 +35,7 @@ export interface PlayerCard {
 
 export interface LeaderboardEntry {
   player: string;
+  username: string;
   xp: number;
   wins: number;
   level: number;
@@ -40,16 +43,25 @@ export interface LeaderboardEntry {
 
 // State
 let chainId: string | null = null;
-let signerKey: string | null = null;
-let initialized = false;
+let playerAddress: string | null = null;
 
-const STORAGE = {
-  chainId: "linera_chain_id",
-  signerKey: "linera_signer_key",
-};
+const STORAGE_KEY = "linera_chain_id";
+const PLAYER_ADDRESS_KEY = "linera_player_address";
 
 export function getChainId(): string | null {
-  return chainId || localStorage.getItem(STORAGE.chainId);
+  return chainId || localStorage.getItem(STORAGE_KEY);
+}
+
+export function getPlayerAddress(): string | null {
+  return playerAddress || localStorage.getItem(PLAYER_ADDRESS_KEY);
+}
+
+export function isWalletPersisted(): boolean {
+  return !!localStorage.getItem(STORAGE_KEY);
+}
+
+export function isBrowserWalletAvailable(): boolean {
+  return false; // Local network mode - no browser wallet needed
 }
 
 async function api(endpoint: string, options?: RequestInit) {
@@ -60,71 +72,75 @@ async function api(endpoint: string, options?: RequestInit) {
   return res.json();
 }
 
-export async function initLineraClient() {
-  if (initialized) return;
-  const linera = await import("@linera/client");
-  await linera.initialize();
-  initialized = true;
-}
-
-export async function connectWallet(): Promise<string | null> {
+export async function connectWallet(): Promise<{ chainId: string; playerAddress: string } | null> {
   try {
-    // Check for existing session first (before initializing)
-    const existingChain = localStorage.getItem(STORAGE.chainId);
-    
-    if (existingChain) {
-      // Restore existing wallet - use chainId as identifier
+    // Check for existing session
+    const existingChain = localStorage.getItem(STORAGE_KEY);
+    const existingAddress = localStorage.getItem(PLAYER_ADDRESS_KEY);
+    if (existingChain && existingAddress) {
       chainId = existingChain;
-      signerKey = existingChain;
-      console.log("Restored wallet:", chainId);
-      return chainId;
+      playerAddress = existingAddress;
+      console.log("Restored wallet:", chainId, playerAddress);
+      return { chainId, playerAddress };
     }
 
-    // No existing session - create new wallet
-    await initLineraClient();
-    const linera = await import("@linera/client");
-    const { signer: signerModule } = linera;
+    // Local network mode - request chain from faucet via backend
+    const result = await api("/api/linera/wallet/connect", { method: "POST" });
+    
+    if (!result.chainId || !result.playerAddress) {
+      throw new Error("Failed to get wallet info from local network");
+    }
 
-    const faucet = new linera.Faucet(LINERA_CONFIG.faucetUrl);
-    const wallet = await faucet.createWallet();
-    const signer = signerModule.PrivateKey.createRandom();
-    const address = signer.address();
+    chainId = result.chainId;
+    playerAddress = result.playerAddress;
+    localStorage.setItem(STORAGE_KEY, chainId);
+    localStorage.setItem(PLAYER_ADDRESS_KEY, playerAddress);
+    console.log("Connected to local network:", chainId, playerAddress);
 
-    console.log("Claiming chain for:", address);
-    const claimedChain = await faucet.claimChain(wallet, address);
-    chainId = (claimedChain as any).chainId || claimedChain.toString();
-    console.log("Chain claimed:", chainId);
-
-    // Persist chainId as wallet identifier
-    localStorage.setItem(STORAGE.chainId, chainId);
-    localStorage.setItem(STORAGE.signerKey, chainId);
-    signerKey = chainId;
-
-    return chainId;
+    return { chainId, playerAddress };
   } catch (error) {
     console.error("Failed to connect:", error);
-    return null;
+    throw error;
   }
 }
 
 export function disconnectWallet(): void {
   chainId = null;
-  signerKey = null;
-  localStorage.removeItem(STORAGE.chainId);
-  localStorage.removeItem(STORAGE.signerKey);
+  playerAddress = null;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(PLAYER_ADDRESS_KEY);
 }
 
-export function isWalletPersisted(): boolean {
-  return !!(localStorage.getItem(STORAGE.chainId) && localStorage.getItem(STORAGE.signerKey));
+// GraphQL query helper via backend API
+async function graphqlQuery(query: string): Promise<any> {
+  const result = await api("/api/linera/query", {
+    method: "POST",
+    body: JSON.stringify({ query }),
+  });
+  return result.data;
 }
 
-export async function registerPlayer(): Promise<boolean> {
+export const SINGLE_PLAYER_FEE = 10; // Cost in coins to play single player
+
+export async function registerPlayer(username: string): Promise<boolean> {
   try {
     const id = getChainId();
     if (!id) return false;
     const result = await api("/api/linera/register", {
       method: "POST",
-      body: JSON.stringify({ chainId: id }),
+      body: JSON.stringify({ chainId: id, username }),
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+export async function payMatchFee(amount: number = SINGLE_PLAYER_FEE): Promise<boolean> {
+  try {
+    const result = await api("/api/linera/match/pay-fee", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
     });
     return result.success;
   } catch {

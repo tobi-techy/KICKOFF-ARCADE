@@ -60,9 +60,13 @@ const PORT = process.env.PORT || 3001;
 
 async function start() {
   try {
-    // Start Linera service in background
-    console.log("Starting Linera service...");
-    await lineraService.startService();
+    // Only start linera service if not using external (Docker provides it)
+    if (!process.env.LINERA_SERVICE_URL) {
+      console.log("Starting Linera service...");
+      await lineraService.startService();
+    } else {
+      console.log("Using Linera service at", process.env.LINERA_SERVICE_URL);
+    }
     
     httpServer.listen(PORT, () => {
       console.log(`Backend running on http://localhost:${PORT}`);

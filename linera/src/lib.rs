@@ -31,10 +31,12 @@ pub enum PlayerStatus {
 /// Operations that can be executed on the contract
 #[derive(Debug, Deserialize, Serialize, GraphQLMutationRoot)]
 pub enum Operation {
-    /// Register a new player (gives welcome bonus)
-    RegisterPlayer,
+    /// Register a new player with username (gives welcome bonus)
+    RegisterPlayer { username: String },
     /// Claim daily reward (once per 24h)
     ClaimDailyReward,
+    /// Pay fee to start a single player match
+    PayMatchFee { amount: u64 },
     /// Record a match result
     RecordMatch { home_score: u8, away_score: u8 },
     /// Forfeit/quit any match - XP penalty
@@ -105,6 +107,7 @@ pub struct Wager {
 /// Player profile data
 #[derive(Clone, Debug, Default, Deserialize, Serialize, SimpleObject)]
 pub struct PlayerProfile {
+    pub username: String,
     pub xp: u64,
     pub coins: u64,
     pub matches_played: u64,
@@ -119,6 +122,7 @@ pub struct PlayerProfile {
 #[derive(Clone, Debug, Deserialize, Serialize, SimpleObject)]
 pub struct LeaderboardEntry {
     pub player: String,
+    pub username: String,
     pub xp: u64,
     pub wins: u64,
     pub level: u64,

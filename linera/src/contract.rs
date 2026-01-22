@@ -52,14 +52,15 @@ impl Contract for KickoffArcadeContract {
         let timestamp = self.runtime.system_time().micros();
 
         match operation {
-            Operation::RegisterPlayer => {
+            Operation::RegisterPlayer { username } => {
                 if self.state.players.get(&owner).await.unwrap().is_none() {
                     // Welcome bonus for new players
                     let profile = PlayerProfile {
+                        username,
                         xp: WELCOME_XP,
                         coins: WELCOME_COINS,
                         level: 1,
-                        last_daily_claim: timestamp,
+                        last_daily_claim: 0, // Allow immediate first claim
                         ..Default::default()
                     };
                     self.state.players.insert(&owner, profile.clone()).unwrap();
@@ -74,13 +75,15 @@ impl Contract for KickoffArcadeContract {
                     .get(&owner)
                     .await
                     .unwrap()
-                    .unwrap_or_default();
+                    .expect("Player not registered");
 
-                // Check if 24 hours have passed
-                assert!(
-                    timestamp.saturating_sub(profile.last_daily_claim) >= DAY_MICROS,
-                    "Daily reward already claimed"
-                );
+                // Check if 24 hours have passed (allow first claim if last_daily_claim is 0)
+                if profile.last_daily_claim > 0 {
+                    assert!(
+                        timestamp.saturating_sub(profile.last_daily_claim) >= DAY_MICROS,
+                        "Daily reward already claimed"
+                    );
+                }
 
                 profile.xp += DAILY_XP;
                 profile.coins += DAILY_COINS;
@@ -88,6 +91,20 @@ impl Contract for KickoffArcadeContract {
                 profile.level = calculate_level(profile.xp);
                 self.state.players.insert(&owner, profile.clone()).unwrap();
                 self.update_leaderboard(&owner, &profile).await;
+            }
+
+            Operation::PayMatchFee { amount } => {
+                let mut profile = self
+                    .state
+                    .players
+                    .get(&owner)
+                    .await
+                    .unwrap()
+                    .expect("Player not registered");
+
+                assert!(profile.coins >= amount, "Insufficient coins");
+                profile.coins -= amount;
+                self.state.players.insert(&owner, profile).unwrap();
             }
 
             Operation::RecordMatch { home_score, away_score } => {
@@ -504,6 +521,7 @@ impl KickoffArcadeContract {
         entries.retain(|e| e.player != player);
         entries.push(LeaderboardEntry {
             player: player.to_string(),
+            username: profile.username.clone(),
             xp: profile.xp,
             wins: profile.wins,
             level: profile.level,

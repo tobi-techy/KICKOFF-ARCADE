@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useGame } from "../context/GameContext";
-import { ScreenName, Player } from "../types";
+import { ScreenName, Player, GameMode } from "../types";
 import { Button } from "../components/Button";
 import {
   ChevronLeft,
@@ -12,16 +12,24 @@ import {
   Info,
   ArrowLeftRight,
   UserPlus,
+  Coins,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLineraWallet } from "../lib/useLineraWallet";
+import { payMatchFee, SINGLE_PLAYER_FEE } from "../lib/linera";
 
 export const SquadSelectScreen: React.FC = () => {
-  const { setScreen, selectedTeam, squad, bench, autoFillSquad, swapPlayers } =
+  const { setScreen, selectedTeam, squad, bench, autoFillSquad, swapPlayers, gameMode } =
     useGame();
+  const { profile, authenticated, refreshProfile } = useLineraWallet();
   const [selectedSlot, setSelectedSlot] = useState<{
     index: number;
     source: "squad" | "bench";
   } | null>(null);
+  const [paying, setPaying] = useState(false);
+
+  const isSinglePlayer = gameMode === GameMode.SINGLE_PLAYER;
+  const hasEnoughCoins = !authenticated || (profile?.coins ?? 0) >= SINGLE_PLAYER_FEE;
 
   useEffect(() => {
     // Auto-fill squad and bench for instant gameplay feel if empty
@@ -240,16 +248,37 @@ export const SquadSelectScreen: React.FC = () => {
             </span>
           </button>
 
+          {isSinglePlayer && authenticated && (
+            <div className="flex items-center justify-center gap-2 py-2 px-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+              <Coins className="w-4 h-4 text-yellow-400" />
+              <span className="text-xs font-black text-yellow-400 uppercase tracking-widest">
+                Entry Fee: {SINGLE_PLAYER_FEE} coins
+              </span>
+            </div>
+          )}
+
           <Button
             fullWidth
             size="lg"
-            disabled={!isSquadFull}
-            onClick={() => setScreen(ScreenName.MATCH)}
+            disabled={!isSquadFull || (isSinglePlayer && authenticated && !hasEnoughCoins) || paying}
+            onClick={async () => {
+              if (isSinglePlayer && authenticated) {
+                setPaying(true);
+                const success = await payMatchFee(SINGLE_PLAYER_FEE);
+                setPaying(false);
+                if (success) {
+                  refreshProfile();
+                  setScreen(ScreenName.MATCH);
+                }
+              } else {
+                setScreen(ScreenName.MATCH);
+              }
+            }}
             className={`py-6 text-lg tracking-[0.2em] shadow-2xl transition-all ${
-              isSquadFull ? "shadow-blue-600/20" : "opacity-50 grayscale"
+              isSquadFull && hasEnoughCoins ? "shadow-blue-600/20" : "opacity-50 grayscale"
             }`}
           >
-            {isSquadFull ? "START MATCH" : "SQUAD INCOMPLETE"}
+            {paying ? "PAYING..." : !isSquadFull ? "SQUAD INCOMPLETE" : !hasEnoughCoins ? "NOT ENOUGH COINS" : "START MATCH"}
           </Button>
         </div>
       </div>
