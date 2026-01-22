@@ -110,6 +110,7 @@ class LineraService {
     return this.query(`
       query {
         playerProfile(address: "${address}") {
+          username
           xp
           coins
           matchesPlayed
@@ -132,6 +133,7 @@ class LineraService {
       query {
         leaderboard(count: ${count}) {
           player
+          username
           xp
           wins
           level
