@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { GameProvider, useGame } from "./context/GameContext";
+import { ToastProvider } from "./context/ToastContext";
 import { ScreenName, GameMode } from "./types";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -84,9 +85,11 @@ const ScreenRouter = () => {
 const App: React.FC = () => {
   return (
     <div className="fixed inset-0 w-screen h-dvh bg-neutral-900 overflow-hidden">
-      <GameProvider>
-        <ScreenRouter />
-      </GameProvider>
+      <ToastProvider>
+        <GameProvider>
+          <ScreenRouter />
+        </GameProvider>
+      </ToastProvider>
     </div>
   );
 };

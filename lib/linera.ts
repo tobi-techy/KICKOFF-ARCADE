@@ -120,8 +120,6 @@ async function graphqlQuery(query: string): Promise<any> {
   return result.data;
 }
 
-export const SINGLE_PLAYER_FEE = 10; // Cost in coins to play single player
-
 export async function registerPlayer(username: string): Promise<boolean> {
   try {
     const id = getChainId();

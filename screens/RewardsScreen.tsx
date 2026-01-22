@@ -19,19 +19,28 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLineraWallet } from "../lib/useLineraWallet";
+import { getLeaderboard } from "../lib/linera";
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001";
 const DAY_MS = 86_400_000; // 24 hours in milliseconds
 
 export const RewardsScreen: React.FC = () => {
   const { setScreen, xp: localXp, walletAddress } = useGame();
-  const { profile, authenticated, loading, refreshProfile, logout } = useLineraWallet();
+  const { profile, authenticated, loading, refreshProfile, logout, playerAddress } = useLineraWallet();
   const [claiming, setClaiming] = useState(false);
+  const [rank, setRank] = useState<number | null>(null);
 
-  // Refresh profile on mount
+  // Refresh profile and get rank on mount
   useEffect(() => {
-    if (authenticated) refreshProfile();
-  }, [authenticated, refreshProfile]);
+    if (authenticated) {
+      refreshProfile();
+      // Fetch leaderboard to find rank
+      getLeaderboard(100).then((entries) => {
+        const idx = entries.findIndex((e) => e.player === playerAddress);
+        setRank(idx >= 0 ? idx + 1 : null);
+      });
+    }
+  }, [authenticated, refreshProfile, playerAddress]);
 
   // Use on-chain data if available, fallback to local
   const xp = profile?.xp ?? localXp;
@@ -183,6 +192,11 @@ export const RewardsScreen: React.FC = () => {
                     <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
                       {matchesPlayed} Matches Played
                     </div>
+                    {rank && (
+                      <div className="text-[10px] text-yellow-400 font-bold uppercase tracking-widest mt-1">
+                        🏆 Rank #{rank} on Leaderboard
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -385,20 +399,27 @@ export const RewardsScreen: React.FC = () => {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex items-center justify-center gap-3"
+              className="flex flex-col items-center gap-2"
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 rounded-full border border-blue-500/20">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                <span className="text-[10px] text-blue-400 font-mono tracking-tight uppercase">
-                  ID: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              {profile?.username && (
+                <span className="text-sm font-arcade font-bold text-white uppercase tracking-widest">
+                  {profile.username}
                 </span>
+              )}
+              <div className="flex items-center gap-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 rounded-full border border-blue-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <span className="text-[10px] text-blue-400 font-mono tracking-tight uppercase">
+                    {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                  </span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-full transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-red-400" />
+                </button>
               </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-full transition-colors"
-              >
-                <LogOut className="w-3.5 h-3.5 text-red-400" />
-              </button>
             </motion.div>
           )}
         </div>
