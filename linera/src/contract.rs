@@ -11,8 +11,9 @@ use linera_sdk::{
 };
 use kickoff_arcade::{
     calculate_level, calculate_rewards, CrossChainMessage, LeaderboardEntry, MatchEvent,
-    Operation, PlayerCard, PlayerProfile, Wager, DAILY_XP, DAILY_COINS, WELCOME_XP, 
-    WELCOME_COINS, DAY_MICROS,
+    Operation, PlayerCard, PlayerProfile, Tournament, TournamentMatch, TournamentHistoryEntry,
+    Wager, DAILY_XP, DAILY_COINS, WELCOME_XP, WELCOME_COINS, DAY_MICROS, 
+    TOURNAMENT_ENTRY_FEE, TOURNAMENT_SIZE,
 };
 use self::state::KickoffArcadeState;
 
@@ -45,6 +46,9 @@ impl Contract for KickoffArcadeContract {
         self.state.leaderboard.set(Vec::new());
         self.state.total_minted.set(0);
         self.state.subscribed_to.set(None);
+        self.state.active_tournament.set(None);
+        self.state.tournament_history.set(Vec::new());
+        self.state.next_tournament_id.set(1);
     }
 
     async fn execute_operation(&mut self, operation: Self::Operation) -> Self::Response {
@@ -423,6 +427,157 @@ impl Contract for KickoffArcadeContract {
                     }
                 }
                 self.state.subscribed_to.set(None);
+            }
+
+            Operation::JoinTournament => {
+                let mut profile = self
+                    .state
+                    .players
+                    .get(&owner)
+                    .await
+                    .unwrap()
+                    .expect("Player not registered");
+
+                assert!(profile.coins >= TOURNAMENT_ENTRY_FEE, "Insufficient coins for entry fee");
+
+                // Get or create tournament
+                let mut tournament = self.state.active_tournament.get().clone().unwrap_or_else(|| {
+                    let id = *self.state.next_tournament_id.get();
+                    Tournament {
+                        id,
+                        participants: Vec::new(),
+                        bracket: Vec::new(),
+                        current_round: 0,
+                        prize_pool: 0,
+                        winner: String::new(),
+                        status: 0,
+                        created_at: timestamp,
+                    }
+                });
+
+                assert!(tournament.status == 0, "Tournament already started");
+                assert!(!tournament.participants.contains(&owner), "Already joined");
+                assert!(tournament.participants.len() < TOURNAMENT_SIZE, "Tournament full");
+
+                // Deduct entry fee
+                profile.coins -= TOURNAMENT_ENTRY_FEE;
+                self.state.players.insert(&owner, profile).unwrap();
+
+                // Add to tournament
+                tournament.participants.push(owner);
+                tournament.prize_pool += TOURNAMENT_ENTRY_FEE;
+
+                // If full, start tournament
+                if tournament.participants.len() == TOURNAMENT_SIZE {
+                    tournament.status = 1;
+                    // Initialize bracket: 4 R1 matches + 2 SF + 1 Final = 7 matches
+                    for i in 0..7 {
+                        let (p1, p2) = if i < 4 {
+                            (tournament.participants[i * 2].clone(), tournament.participants[i * 2 + 1].clone())
+                        } else {
+                            (String::new(), String::new())
+                        };
+                        tournament.bracket.push(TournamentMatch {
+                            player1: p1,
+                            player2: p2,
+                            score1: 0,
+                            score2: 0,
+                            winner: String::new(),
+                            played: false,
+                        });
+                    }
+                    self.state.next_tournament_id.set(tournament.id + 1);
+                }
+
+                self.state.active_tournament.set(Some(tournament));
+            }
+
+            Operation::RecordTournamentMatch { match_index, score1, score2 } => {
+                let mut tournament = self
+                    .state
+                    .active_tournament
+                    .get()
+                    .clone()
+                    .expect("No active tournament");
+
+                assert!(tournament.status == 1, "Tournament not in progress");
+                let idx = match_index as usize;
+                assert!(idx < tournament.bracket.len(), "Invalid match index");
+                assert!(!tournament.bracket[idx].played, "Match already played");
+
+                let m = &tournament.bracket[idx];
+                assert!(
+                    owner == m.player1 || owner == m.player2,
+                    "Not a participant in this match"
+                );
+
+                // Record result
+                let winner = if score1 > score2 {
+                    m.player1.clone()
+                } else {
+                    m.player2.clone()
+                };
+
+                tournament.bracket[idx].score1 = score1;
+                tournament.bracket[idx].score2 = score2;
+                tournament.bracket[idx].winner = winner.clone();
+                tournament.bracket[idx].played = true;
+
+                // Advance winner to next round
+                if idx < 4 {
+                    // R1 -> SF
+                    let sf_idx = 4 + idx / 2;
+                    if idx % 2 == 0 {
+                        tournament.bracket[sf_idx].player1 = winner;
+                    } else {
+                        tournament.bracket[sf_idx].player2 = winner;
+                    }
+                } else if idx < 6 {
+                    // SF -> Final
+                    if idx == 4 {
+                        tournament.bracket[6].player1 = winner;
+                    } else {
+                        tournament.bracket[6].player2 = winner;
+                    }
+                } else {
+                    // Final completed
+                    tournament.winner = winner.clone();
+                    tournament.status = 2;
+
+                    // Award prize to winner
+                    let prize = tournament.prize_pool;
+                    let mut winner_profile = self
+                        .state
+                        .players
+                        .get(&winner)
+                        .await
+                        .unwrap()
+                        .unwrap_or_default();
+                    winner_profile.coins += prize;
+                    winner_profile.xp += 500; // Tournament win bonus
+                    winner_profile.level = calculate_level(winner_profile.xp);
+                    self.state.players.insert(&winner, winner_profile.clone()).unwrap();
+                    self.update_leaderboard(&winner, &winner_profile).await;
+
+                    // Add to history
+                    let mut history = self.state.tournament_history.get().clone();
+                    history.insert(0, TournamentHistoryEntry {
+                        id: tournament.id,
+                        winner: winner.clone(),
+                        winner_username: winner_profile.username,
+                        prize,
+                        participants: TOURNAMENT_SIZE as u8,
+                        completed_at: timestamp,
+                    });
+                    history.truncate(20);
+                    self.state.tournament_history.set(history);
+
+                    // Clear active tournament
+                    self.state.active_tournament.set(None);
+                    return;
+                }
+
+                self.state.active_tournament.set(Some(tournament));
             }
         }
     }

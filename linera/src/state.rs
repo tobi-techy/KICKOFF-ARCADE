@@ -1,6 +1,6 @@
 //! Application state using Linera Views
 
-use kickoff_arcade::{LeaderboardEntry, PlayerCard, PlayerProfile, Wager};
+use kickoff_arcade::{LeaderboardEntry, PlayerCard, PlayerProfile, Tournament, TournamentHistoryEntry, Wager};
 use linera_sdk::views::{linera_views, MapView, RegisterView, RootView, ViewStorageContext};
 
 #[derive(RootView, async_graphql::SimpleObject)]
@@ -18,4 +18,10 @@ pub struct KickoffArcadeState {
     pub wagers: MapView<String, Wager>,
     /// Track which host chain we're subscribed to (for guests)
     pub subscribed_to: RegisterView<Option<String>>,
+    /// Current active tournament
+    pub active_tournament: RegisterView<Option<Tournament>>,
+    /// Tournament history (last 20)
+    pub tournament_history: RegisterView<Vec<TournamentHistoryEntry>>,
+    /// Next tournament ID
+    pub next_tournament_id: RegisterView<u64>,
 }

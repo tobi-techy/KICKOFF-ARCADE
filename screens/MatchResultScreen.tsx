@@ -19,9 +19,12 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLineraWallet } from "../lib/useLineraWallet";
+import { GameMode } from "../types";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export const MatchResultScreen: React.FC = () => {
-  const { matchStats, setScreen, walletAddress } = useGame();
+  const { matchStats, setScreen, walletAddress, gameMode, tournamentMatchIndex, setTournamentMatchIndex } = useGame();
   const { submitMatch, authenticated, loading: walletLoading } = useLineraWallet();
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
 
@@ -29,13 +32,36 @@ export const MatchResultScreen: React.FC = () => {
   useEffect(() => {
     if (authenticated && matchStats && syncStatus === "idle") {
       setSyncStatus("syncing");
-      submitMatch(matchStats.homeScore, matchStats.awayScore)
-        .then((result) => {
-          setSyncStatus(result ? "synced" : "error");
-        })
-        .catch(() => setSyncStatus("error"));
+      
+      const syncMatch = async () => {
+        try {
+          if (gameMode === GameMode.TOURNAMENT && tournamentMatchIndex !== null) {
+            // Record tournament match
+            const res = await fetch(`${API_URL}/api/linera/tournament/match`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                matchIndex: tournamentMatchIndex,
+                score1: matchStats.homeScore,
+                score2: matchStats.awayScore,
+              }),
+            });
+            const data = await res.json();
+            setTournamentMatchIndex(null);
+            setSyncStatus(data.success ? "synced" : "error");
+          } else {
+            // Regular match
+            const result = await submitMatch(matchStats.homeScore, matchStats.awayScore);
+            setSyncStatus(result ? "synced" : "error");
+          }
+        } catch {
+          setSyncStatus("error");
+        }
+      };
+      
+      syncMatch();
     }
-  }, [authenticated, matchStats, syncStatus, submitMatch]);
+  }, [authenticated, matchStats, syncStatus, submitMatch, gameMode, tournamentMatchIndex]);
 
   if (!matchStats) return null;
 

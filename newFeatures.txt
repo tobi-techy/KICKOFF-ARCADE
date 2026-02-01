@@ -1,0 +1,40 @@
+Gameplay Enhancements
+- Match history screen - show past games with scores, opponents, rewards earned
+- Streak bonuses - extra XP/coins for consecutive wins
+- Difficulty progression - unlock harder AI levels as you level up
+- Custom formations - let players arrange their squad positions
+
+Multiplayer
+- Matchmaking queue - auto-match with random opponents instead of just private lobbies
+- Spectator mode - watch live matches
+- Rematch option - quick rematch after a game ends
+- Chat/emotes during matches
+
+Economy & Rewards
+- Refund on disconnect - if opponent disconnects, return stake
+- Achievement system - badges for milestones (100 wins, first tournament win, etc.)
+- Season pass - time-limited rewards track
+- Coin shop - spend coins on cosmetics or power-ups
+
+Tournament Mode
+- Actually implement the bracket logic (currently just UI)
+- Tournament history and past winners
+- Weekly/monthly automated tournaments
+- Prize pool from entry fees
+
+Social Features
+- Friends list - add and challenge friends directly
+- Player search - find players by username
+- Match replays - save and share memorable games
+
+Technical
+- Offline mode - play vs AI without wallet connection
+- Sound settings - volume controls, mute option
+- Mobile touch controls optimization
+- Performance mode for lower-end devices
+
+Quick Wins for Buildathon
+- Team info section in README (required for submission)
+- CHANGELOG.md documenting features
+- Demo video or screenshots
+- Better error handling with user-friendly messages

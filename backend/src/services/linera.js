@@ -259,6 +259,57 @@ class LineraService {
       };
     }
   }
+
+  async getActiveTournament() {
+    return this.query(`
+      query {
+        activeTournament {
+          id
+          participants
+          bracket {
+            player1
+            player2
+            score1
+            score2
+            winner
+            played
+          }
+          currentRound
+          prizePool
+          winner
+          status
+          createdAt
+        }
+      }
+    `);
+  }
+
+  async getTournamentHistory() {
+    return this.query(`
+      query {
+        tournamentHistory {
+          id
+          winner
+          winnerUsername
+          prize
+          participants
+          completedAt
+        }
+      }
+    `);
+  }
+
+  async joinTournament() {
+    return this.mutate(`mutation { joinTournament }`);
+  }
+
+  async recordTournamentMatch(matchIndex, score1, score2) {
+    return this.mutate(`
+      mutation {
+        recordTournamentMatch(matchIndex: ${matchIndex}, score1: ${score1}, score2: ${score2})
+      }
+    `);
+  }
 }
 
 export const lineraService = new LineraService();

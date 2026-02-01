@@ -210,4 +210,45 @@ router.post("/wager/forfeit", async (req, res) => {
   }
 });
 
+// Get active tournament
+router.get("/tournament", async (req, res) => {
+  try {
+    const result = await lineraService.getActiveTournament();
+    res.json({ success: true, data: result.data?.activeTournament });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get tournament history
+router.get("/tournament/history", async (req, res) => {
+  try {
+    const result = await lineraService.getTournamentHistory();
+    res.json({ success: true, data: result.data?.tournamentHistory || [] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Join tournament
+router.post("/tournament/join", async (req, res) => {
+  try {
+    const result = await lineraService.joinTournament();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Record tournament match result
+router.post("/tournament/match", async (req, res) => {
+  try {
+    const { matchIndex, score1, score2 } = req.body;
+    const result = await lineraService.recordTournamentMatch(matchIndex, score1, score2);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

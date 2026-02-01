@@ -32,6 +32,8 @@ interface GameContextType extends GameState {
   addCoins: (amount: number) => void;
   setLobby: (lobby: LobbyData | null) => void;
   lobby: LobbyData | null;
+  tournamentMatchIndex: number | null;
+  setTournamentMatchIndex: (index: number | null) => void;
 }
 
 const initialState: GameState = {
@@ -55,6 +57,7 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
   const [state, setState] = useState<GameState>(initialState);
   const [lobby, setLobbyState] = useState<LobbyData | null>(null);
+  const [tournamentMatchIndex, setTournamentMatchIndex] = useState<number | null>(null);
 
   const setScreen = (screen: ScreenName) =>
     setState((prev) => ({ ...prev, currentScreen: screen }));
@@ -151,6 +154,7 @@ export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
       value={{
         ...state,
         lobby,
+        tournamentMatchIndex,
         setScreen,
         setGameMode,
         setMatchDuration,
@@ -165,6 +169,7 @@ export const GameProvider = ({ children }: React.PropsWithChildren<{}>) => {
         addXP,
         addCoins,
         setLobby,
+        setTournamentMatchIndex,
       }}
     >
       {children}

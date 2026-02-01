@@ -12,7 +12,7 @@ use linera_sdk::{
     views::View,
     Service, ServiceRuntime,
 };
-use kickoff_arcade::{LeaderboardEntry, Operation, PlayerCard, PlayerProfile, Wager};
+use kickoff_arcade::{LeaderboardEntry, Operation, PlayerCard, PlayerProfile, Tournament, TournamentHistoryEntry, Wager};
 use self::state::KickoffArcadeState;
 
 pub struct KickoffArcadeService {
@@ -86,5 +86,15 @@ impl QueryRoot {
     /// Get wager by lobby ID
     async fn wager(&self, lobby_id: String) -> Option<Wager> {
         self.state.wagers.get(&lobby_id).await.unwrap()
+    }
+
+    /// Get active tournament
+    async fn active_tournament(&self) -> Option<Tournament> {
+        self.state.active_tournament.get().clone()
+    }
+
+    /// Get tournament history
+    async fn tournament_history(&self) -> Vec<TournamentHistoryEntry> {
+        self.state.tournament_history.get().clone()
     }
 }

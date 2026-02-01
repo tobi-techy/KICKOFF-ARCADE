@@ -63,6 +63,10 @@ pub enum Operation {
     ForfeitWager { lobby_id: String },
     /// Leave/disconnect from match
     LeaveMatch { lobby_id: String },
+    /// Join the active tournament (pays entry fee)
+    JoinTournament,
+    /// Record tournament match result
+    RecordTournamentMatch { match_index: u8, score1: u8, score2: u8 },
 }
 
 /// Cross-chain messages for multiplayer sync
@@ -164,3 +168,42 @@ pub const DAILY_COINS: u64 = 100;
 pub const WELCOME_XP: u64 = 100;
 pub const WELCOME_COINS: u64 = 500;
 pub const DAY_MICROS: u64 = 86_400_000_000; // 24 hours in microseconds
+
+/// Tournament entry fee and prize
+pub const TOURNAMENT_ENTRY_FEE: u64 = 50;
+pub const TOURNAMENT_SIZE: usize = 8; // 8 players = 3 rounds
+
+/// Tournament bracket match
+#[derive(Clone, Debug, Default, Deserialize, Serialize, SimpleObject)]
+pub struct TournamentMatch {
+    pub player1: String,
+    pub player2: String,
+    pub score1: u8,
+    pub score2: u8,
+    pub winner: String,
+    pub played: bool,
+}
+
+/// Tournament data
+#[derive(Clone, Debug, Default, Deserialize, Serialize, SimpleObject)]
+pub struct Tournament {
+    pub id: u64,
+    pub participants: Vec<String>,
+    pub bracket: Vec<TournamentMatch>, // 7 matches for 8 players (4+2+1)
+    pub current_round: u8, // 0=R1, 1=SF, 2=Final
+    pub prize_pool: u64,
+    pub winner: String,
+    pub status: u8, // 0=open, 1=in_progress, 2=completed
+    pub created_at: u64,
+}
+
+/// Tournament history entry
+#[derive(Clone, Debug, Default, Deserialize, Serialize, SimpleObject)]
+pub struct TournamentHistoryEntry {
+    pub id: u64,
+    pub winner: String,
+    pub winner_username: String,
+    pub prize: u64,
+    pub participants: u8,
+    pub completed_at: u64,
+}

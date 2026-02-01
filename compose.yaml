@@ -5,6 +5,7 @@ services:
       - "5173:5173"   # Frontend
       - "3001:3001"   # Backend API
       - "8080:8080"   # Linera faucet
+      - "8081:8081"   # Linera service (GraphQL)
       - "9001:9001"   # Shard proxy
       - "13001:13001" # Shard
     volumes:
