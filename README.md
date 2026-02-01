@@ -4,6 +4,77 @@ A real-time football arcade game built on **Linera blockchain**, featuring on-ch
 
 ![Kickoff Arcade](https://img.shields.io/badge/Linera-Buildathon-blue) ![Version](https://img.shields.io/badge/version-1.0.0-green) ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
 
+---
+
+## 🚀 Quick Start (For Judges)
+
+> **This project uses the official Linera dockerized buildathon template for local network deployment.**
+
+### Prerequisites
+- [Docker Desktop](https://docs.docker.com/get-docker/) installed and running
+- At least 4GB RAM allocated to Docker
+
+### Run the App
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/tobi-techy/KICKOFF-ARCADE.git
+cd KICKOFF-ARCADE
+
+# 2. Build and start (takes ~5-10 minutes first time)
+docker compose up --build
+```
+
+### What Happens
+1. Builds Docker image with Linera CLI + Rust + Node.js
+2. Starts local Linera network with faucet
+3. Creates wallet and requests a chain
+4. Compiles and deploys smart contracts
+5. Starts Linera GraphQL service (port 8081)
+6. Starts backend API (port 3001)
+7. Starts frontend (port 5173)
+
+### When Ready
+Look for this in the logs:
+```
+VITE v6.x.x ready in xxx ms
+➜  Local:   http://localhost:5173/
+```
+
+### Access the Game
+
+| URL | Service |
+|-----|---------|
+| **http://localhost:5173** | 🎮 Game UI |
+| http://localhost:3001 | Backend API |
+| http://localhost:8080 | Linera Faucet |
+| http://localhost:8081 | Linera GraphQL |
+
+### Test the Features
+
+1. **Connect Wallet** - Click "Connect Wallet" on home screen (auto-connects to local network)
+2. **Register** - Enter a username to create your on-chain profile
+3. **Single Player** - Select difficulty, pay entry fee, play match
+4. **Leaderboard** - View global rankings with podium
+5. **Tournament** - Join with 50 coins, compete in bracket
+6. **Rewards** - Check your XP, coins, and claim daily reward
+
+### Stop the App
+```bash
+docker compose down
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Build fails | Ensure Docker has 4GB+ RAM in settings |
+| Port in use | Run `docker compose down` first |
+| Stuck on build | Check Docker is running, retry |
+| Frontend blank | Wait for "VITE ready" in logs |
+
+---
+
 ## 🎮 Features
 
 ### Gameplay

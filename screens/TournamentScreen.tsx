@@ -80,16 +80,21 @@ export const TournamentScreen: React.FC = () => {
   };
 
   const handleJoin = async () => {
-    if (!authenticated || !hasEnoughCoins || joining) return;
+    if (!authenticated || !hasEnoughCoins || joining || isParticipant) return;
     setJoining(true);
     try {
       const res = await fetch(`${API_URL}/api/linera/tournament/join`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
         showToast("Joined tournament!", "success");
-        fetchTournament();
+        await fetchTournament();
       } else {
-        showToast(data.error || "Failed to join", "error");
+        if (data.error?.includes("Already joined")) {
+          showToast("You're already in this tournament", "info");
+          await fetchTournament();
+        } else {
+          showToast(data.error || "Failed to join", "error");
+        }
       }
     } catch (e) {
       showToast("Failed to join tournament", "error");
