@@ -303,6 +303,32 @@ docker compose up --build
 
 Built for the Linera Buildathon
 
+| Name | Discord | Wallet Address |
+|------|---------|----------------|
+| Tobi | @tobi_techy | `<YOUR_WALLET_ADDRESS>` |
+
+---
+
+## 🔧 Linera SDK Features Used
+
+### Contract (linera-sdk v0.15.5)
+- **Views System** - `MapView`, `RegisterView` for persistent state
+- **GraphQL Integration** - `async-graphql` for queries and mutations
+- **Cross-Chain Messaging** - `runtime.send_message()` for multiplayer sync
+- **Authenticated Signer** - `runtime.authenticated_signer()` for player identity
+- **System Time** - `runtime.system_time()` for daily rewards and timestamps
+- **Event Streaming** - `runtime.emit()` for real-time match events
+
+### Protocol Features
+- **Microchain Architecture** - Each player operates on their own chain
+- **Faucet Integration** - Automatic chain provisioning via faucet
+- **Local Network** - `linera net up` for development/testing
+- **WASM Contracts** - Compiled to `wasm32-unknown-unknown` target
+
+### Frontend Integration
+- **GraphQL Queries** - Direct queries to Linera service endpoint
+- **Mutation Operations** - Contract operations via GraphQL mutations
+
 ---
 
 ## 📄 License
