@@ -1,22 +1,29 @@
 # Kickoff Arcade ⚽
 
-A real-time football arcade game built on **Linera blockchain**, featuring on-chain rewards, multiplayer with staking, and pixel art graphics.
+A real-time football arcade game built on **Linera blockchain**, featuring on-chain rewards, tournaments with prize pools, multiplayer staking, and pixel art graphics.
 
-![Kickoff Arcade](https://img.shields.io/badge/Linera-Testnet%20Conway-blue) ![Version](https://img.shields.io/badge/version-1.0.0-green)
+![Kickoff Arcade](https://img.shields.io/badge/Linera-Buildathon-blue) ![Version](https://img.shields.io/badge/version-1.0.0-green) ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
 
 ## 🎮 Features
 
 ### Gameplay
 - **Real-time Physics** - Smooth ball and player physics using planck.js
 - **8-Direction Sprites** - Pixel art characters with running animations
-- **AI Opponents** - Smart AI with formation-based positioning
+- **AI Opponents** - Smart AI with formation-based positioning (Easy/Medium/Hard)
 - **Multiple Game Modes** - Single Player, Multiplayer, Tournament
 
 ### Blockchain Integration
 - **On-Chain Rewards** - XP and coins stored on Linera blockchain
+- **Tournament System** - 8-player brackets with prize pools from entry fees
 - **Multiplayer Staking** - Wager coins against opponents with escrow
-- **Leaderboard** - Global rankings synced across microchains
-- **Player Profiles** - Persistent stats (wins, losses, level)
+- **Leaderboard** - Global rankings with podium display for top 3
+- **Player Profiles** - Persistent stats (wins, losses, level, username)
+
+### Tournament Mode (New!)
+- **8-Player Brackets** - Quarter Finals → Semi Finals → Final
+- **Entry Fee** - 50 coins to join
+- **Prize Pool** - Winner takes all (400 coins from 8 players)
+- **Tournament History** - Track past winners and prizes
 
 ### Multiplayer
 - **Private Lobbies** - Create match with shareable link + QR code
@@ -24,232 +31,228 @@ A real-time football arcade game built on **Linera blockchain**, featuring on-ch
 - **Escrow System** - Smart contract holds stakes until match ends
 - **Winner Takes All** - 95% of pot goes to winner (5% fee)
 
-## 🔗 Live Demo
+---
 
-**Application ID:** `870548fc630a2ded1af86fd0ef5fd77a140afcbdc59280d8925224d84b775778`
+## 🚀 Quick Start with Docker (Recommended)
 
-**Chain ID:** `17ef7b84785e23ecb8d93fba80fc8e54e943b2c1c333f6a1c9245e98d957e894`
+This project uses the **official Linera buildathon template** with Docker for easy setup. Everything runs in a single container - no manual Linera installation required.
 
-## 🛠️ Tech Stack
+### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
-### Frontend
-- React 19 + TypeScript
-- Vite
-- Tailwind CSS v4
-- Framer Motion
-- planck.js (physics)
-- `@linera/client` for blockchain
+### Run with One Command
 
-### Smart Contracts (Linera)
-- Rust + linera-sdk v0.15.8
-- WebAssembly (WASM)
-- GraphQL API via async-graphql
+```bash
+# Clone the repository
+git clone https://github.com/tobi-techy/KICKOFF-ARCADE.git
+cd KICKOFF-ARCADE
 
-### Backend
-- Node.js + Express
-- Socket.IO (real-time multiplayer)
-- Linera CLI integration
+# Start everything with Docker
+docker compose up --build
+```
 
-## 📦 Smart Contract Operations
+This will:
+1. Build the Docker image with Linera CLI tools and Rust toolchain
+2. Start a local Linera network with faucet
+3. Initialize wallet and request a chain
+4. Build and deploy the smart contracts
+5. Start the Linera GraphQL service
+6. Start the backend API server
+7. Start the frontend dev server
 
-### Player Management
-| Operation | Description |
-|-----------|-------------|
-| `RegisterPlayer` | Create new player profile |
-| `RecordMatch { home_score, away_score }` | Record match result, earn XP/coins |
-| `ForfeitMatch` | Quit match early (-50 XP, -25 coins penalty) |
+### Access the App
 
-### Wager System (Multiplayer)
-| Operation | Description |
-|-----------|-------------|
-| `CreateWager { lobby_id, amount }` | Host stakes coins, creates escrow |
-| `AcceptWager { lobby_id }` | Guest stakes matching amount |
-| `CancelWager { lobby_id }` | Host cancels before guest joins (refund) |
-| `ResolveWager { lobby_id, winner, scores }` | Distribute winnings to winner |
-| `ForfeitWager { lobby_id }` | Quit wager match (lose stake + XP) |
+Once you see `VITE ready` in the logs:
 
-### NFT Cards
-| Operation | Description |
-|-----------|-------------|
-| `MintPlayer { name, position, stats, rarity }` | Mint player NFT card |
+| Service | URL | Description |
+|---------|-----|-------------|
+| **Frontend** | http://localhost:5173 | Game UI |
+| **Backend API** | http://localhost:3001 | REST API |
+| **Linera Faucet** | http://localhost:8080 | Get test tokens |
+| **Linera GraphQL** | http://localhost:8081 | Query contract state |
 
-### Queries (GraphQL)
-- `playerProfile(address)` - Get player stats
-- `leaderboard(count)` - Get top players
-- `playerCards(owner)` - Get NFT collection
-- `wager(lobbyId)` - Get wager/escrow info
-- `isRegistered(address)` - Check if player exists
+### Docker Architecture
 
-## 🏆 Rewards System
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Container                          │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Frontend  │  │   Backend   │  │   Linera Network    │  │
+│  │   (Vite)    │  │  (Express)  │  │  ┌───────────────┐  │  │
+│  │   :5173     │  │   :3001     │  │  │ Faucet :8080  │  │  │
+│  └─────────────┘  └─────────────┘  │  │ Service :8081 │  │  │
+│                                     │  │ Shard :9001   │  │  │
+│                                     │  └───────────────┘  │  │
+│                                     └─────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
 
-| Outcome | XP Earned | Coins Earned |
-|---------|-----------|--------------|
-| Win | 100 | 50 |
-| Draw | 50 | 20 |
-| Loss | 25 | 10 |
-| Forfeit | -50 | -25 |
-| **Welcome Bonus** | 100 | 500 |
-| **Daily Reward** | 50 | 100 |
+### Key Files
 
-**Level Calculation:** `Level = (Total XP / 500) + 1`
+| File | Purpose |
+|------|---------|
+| `Dockerfile` | Multi-stage build: Rust for Linera tools, Node.js 22 for app |
+| `compose.yaml` | Docker Compose config with port mappings |
+| `run.bash` | Startup script: network init, contract deploy, start services |
 
-**Wager Winnings:** Winner receives 95% of total pot (5% protocol fee)
+---
 
-**Daily Rewards:** Claim once every 24 hours from the Rewards screen
+## 🛠️ Manual Setup (Alternative)
 
-## 🚀 Quick Start
+If you prefer running without Docker:
 
 ### Prerequisites
 - Node.js 18+
 - Rust with `wasm32-unknown-unknown` target
-- Linera CLI tools (v0.15.8)
+- Linera CLI tools (v0.15.5)
 
 ### 1. Install Linera CLI
 
 ```bash
-# Install Linera CLI
-cargo install linera-service@0.15.8
-
-# Add WASM target
+cargo install --locked linera-service@0.15.5 linera-storage-service@0.15.5
 rustup target add wasm32-unknown-unknown
-
-# Initialize wallet (creates ~/.linera)
-linera wallet init --faucet https://faucet.testnet-conway.linera.net
-
-# Request a chain
-linera wallet request-chain --faucet https://faucet.testnet-conway.linera.net
 ```
 
-### 2. Build & Deploy Smart Contracts
+### 2. Start Local Network
 
 ```bash
-# Build contracts
+eval "$(linera net helper)"
+linera_spawn linera net up --with-faucet
+export LINERA_FAUCET_URL=http://localhost:8080
+linera wallet init --faucet="$LINERA_FAUCET_URL"
+linera wallet request-chain --faucet="$LINERA_FAUCET_URL"
+```
+
+### 3. Build & Deploy Contracts
+
+```bash
 cd linera
 cargo build --release --target wasm32-unknown-unknown
 
-# Deploy to testnet (save the Application ID output)
 linera publish-and-create \
   target/wasm32-unknown-unknown/release/kickoff_arcade_contract.wasm \
   target/wasm32-unknown-unknown/release/kickoff_arcade_service.wasm \
   --json-argument "null"
 ```
 
-### 3. Configure Environment
+### 4. Configure Environment
 
-```bash
-# Backend (.env in /backend)
+Create `backend/.env`:
+```env
 PORT=3001
-APPLICATION_ID=<your-application-id-from-deploy>
+APPLICATION_ID=<application-id-from-deploy>
 CHAIN_ID=<your-chain-id>
-
-# Frontend (.env.local in root)
-VITE_API_URL=http://localhost:3001
+OWNER_ADDRESS=<your-wallet-address>
 ```
 
-### 4. Install Dependencies
+### 5. Start Services
 
 ```bash
-# Frontend
-npm install
+# Terminal 1: Linera service
+linera service --port 8081
 
-# Backend
-cd backend && npm install
+# Terminal 2: Backend
+cd backend && npm install && npm start
+
+# Terminal 3: Frontend
+npm install && npm run dev
 ```
 
-### 5. Run the App
+---
 
-```bash
-# Terminal 1: Start backend (auto-starts linera service on port 8080)
-cd backend && npm start
+## 📦 Smart Contract Operations
 
-# Terminal 2: Start frontend
-npm run dev
+### Player Management
+| Operation | Description |
+|-----------|-------------|
+| `RegisterPlayer { username }` | Create profile with welcome bonus (100 XP, 500 coins) |
+| `RecordMatch { home_score, away_score }` | Record result, earn XP/coins |
+| `PayMatchFee { amount }` | Pay entry fee for single player (5/10/20 coins) |
+| `ClaimDailyReward` | Claim daily bonus (50 XP, 100 coins) |
+| `ForfeitMatch` | Quit match (-50 XP, -25 coins penalty) |
+
+### Tournament System
+| Operation | Description |
+|-----------|-------------|
+| `JoinTournament` | Pay 50 coins, join active tournament |
+| `RecordTournamentMatch { match_index, score1, score2 }` | Record bracket match, advance winner |
+
+### Wager System (Multiplayer)
+| Operation | Description |
+|-----------|-------------|
+| `CreateWager { lobby_id, amount }` | Host stakes coins, creates escrow |
+| `AcceptWager { lobby_id, host_chain_id }` | Guest stakes matching amount |
+| `ResolveWager { lobby_id, winner, home_score, away_score }` | Distribute winnings |
+| `ForfeitWager { lobby_id }` | Quit wager match (lose stake) |
+
+### GraphQL Queries
+```graphql
+playerProfile(address: String!) -> PlayerProfile
+leaderboard(count: Int) -> [LeaderboardEntry]
+activeTournament -> Tournament
+tournamentHistory -> [TournamentHistoryEntry]
+wager(lobbyId: String!) -> Wager
+isRegistered(address: String!) -> Boolean
 ```
 
-Open http://localhost:5173 in your browser.
+---
 
-### Testing Game Modes
+## 🏆 Rewards System
 
-**Single Player:**
-1. Click "Connect Wallet" on home screen
-2. Select "Single Player" → Choose difficulty → Pick team
-3. Play match with keyboard controls
+| Outcome | XP | Coins |
+|---------|-----|-------|
+| Win | +100 | +50 |
+| Draw | +50 | +20 |
+| Loss | +25 | +10 |
+| Forfeit | -50 | -25 |
+| Welcome Bonus | +100 | +500 |
+| Daily Reward | +50 | +100 |
+| Tournament Win | +500 | Prize Pool |
 
-**Multiplayer (Local Testing):**
-1. Start the app in two browser windows
-2. Window 1: Create multiplayer lobby, set wager amount
-3. Window 2: Join via the lobby link or enter lobby code
-4. Both players select teams → Match starts
+### Single Player Entry Fees
+| Difficulty | Fee |
+|------------|-----|
+| Easy | 5 coins |
+| Medium | 10 coins |
+| Hard | 20 coins |
 
-**Rewards/Profile:**
-- After matches, XP and coins are recorded on-chain
-- View stats on the Rewards screen
-
-### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `linera service` not found | Run `cargo install linera-service@0.15.8` |
-| Port 8080 in use | Kill existing linera service: `pkill -f "linera service"` |
-| Wallet not connecting | Clear localStorage and reconnect |
-| Backend won't start | Ensure `.env` has valid APPLICATION_ID and CHAIN_ID |
-
-### Deploy to Testnet Conway
-
-```bash
-# Initialize wallet (first time only)
-linera wallet init --faucet https://faucet.testnet-conway.linera.net
-linera wallet request-chain --faucet https://faucet.testnet-conway.linera.net
-
-# Deploy application
-linera publish-and-create \
-  linera/target/wasm32-unknown-unknown/release/kickoff_arcade_contract.wasm \
-  linera/target/wasm32-unknown-unknown/release/kickoff_arcade_service.wasm \
-  --json-argument "null"
-```
+---
 
 ## 📁 Project Structure
 
 ```
 kickoff-arcade/
-├── linera/                    # Linera smart contracts
+├── Dockerfile              # Multi-stage Docker build
+├── compose.yaml            # Docker Compose configuration
+├── run.bash                # Container startup script
+├── linera/                 # Linera smart contracts (Rust)
 │   ├── src/
-│   │   ├── lib.rs             # ABI definitions & operations
-│   │   ├── state.rs           # Application state (Views)
-│   │   ├── contract.rs        # Contract logic (mutations)
-│   │   └── service.rs         # Service (GraphQL queries)
+│   │   ├── lib.rs          # ABI, types, operations
+│   │   ├── state.rs        # Application state (Views)
+│   │   ├── contract.rs     # Contract logic (mutations)
+│   │   └── service.rs      # GraphQL queries
 │   └── Cargo.toml
-├── backend/                   # Node.js backend
+├── backend/                # Node.js backend
 │   └── src/
-│       ├── index.js           # Express server
-│       ├── routes/linera.js   # Linera API routes
+│       ├── index.js        # Express server
+│       ├── routes/linera.js # API routes
 │       └── services/
-│           ├── linera.js      # Linera CLI wrapper
-│           ├── socket.js      # Socket.IO handlers
-│           └── matchmaking.js # Match/lobby management
+│           ├── linera.js   # Linera GraphQL client
+│           └── socket.js   # Socket.IO for multiplayer
+├── screens/                # React screens
+│   ├── HomeScreen.tsx
+│   ├── MatchScreen.tsx
+│   ├── TournamentScreen.tsx
+│   ├── LeaderboardScreen.tsx
+│   └── RewardsScreen.tsx
 ├── lib/
-│   ├── linera.ts              # Frontend Linera client
-│   ├── useLineraWallet.ts     # React hook for wallet
-│   └── multiplayer.ts         # Socket.IO client
-├── screens/
-│   ├── HomeScreen.tsx         # Main menu
-│   ├── MatchScreen.tsx        # Game gameplay
-│   ├── MultiplayerLobbyScreen.tsx  # Lobby with QR/link
-│   ├── MatchResultScreen.tsx  # Results + wager winnings
-│   └── RewardsScreen.tsx      # On-chain profile/stats
-├── components/
-│   ├── PixelPlayer.tsx        # Animated sprite component
-│   └── Joystick.tsx           # Touch controls
-├── utils/
-│   ├── physics.ts             # planck.js game physics
-│   ├── ai.ts                  # AI player logic
-│   └── sounds.ts              # Web Audio sound effects
-└── public/sprites/            # Pixel art character sprites
-    ├── attacker/
-    ├── midfielder/
-    ├── defender/
-    └── goalkeeper/
+│   ├── linera.ts           # Frontend Linera client
+│   └── useLineraWallet.ts  # React wallet hook
+└── public/sprites/         # Pixel art assets
 ```
+
+---
 
 ## 🎮 Controls
 
@@ -258,56 +261,50 @@ kickoff-arcade/
 | WASD / Arrows | Move player |
 | Space (hold) | Pass (charge power) |
 | Enter (hold) | Shoot (charge power) |
-| Q | Through ball |
-| E | Slide tackle |
 | Tab | Switch player |
 | Shift | Sprint |
 | Escape | Pause menu |
 
-## 🔄 Multiplayer Flow
+---
 
-### Host (Player 1)
-1. Select Multiplayer → Choose Team
-2. Set wager amount (0-1000 coins)
-3. Share link or QR code with opponent
-4. Wait for opponent → Start match
+## 🔧 Troubleshooting
 
-### Guest (Player 2)
-1. Open invite link
-2. Select team
-3. See required wager amount
-4. Stake coins → Join match
+| Issue | Solution |
+|-------|----------|
+| Docker build fails | Ensure Docker has enough memory (4GB+) |
+| Port already in use | `docker compose down` then retry |
+| Contract not deploying | Check logs: `docker compose logs -f` |
+| Frontend not loading | Wait for "VITE ready" in logs |
+| Wallet not connecting | Clear browser localStorage |
 
-### After Match
-- Winner receives 95% of total pot
-- Both players get XP based on result
-- Stats recorded on-chain
-
-## 🔐 Security
-
-- **Escrow System** - Stakes locked in smart contract until match ends
-- **Forfeit Protection** - Quitting gives opponent full pot
-- **On-Chain Verification** - All results stored immutably
-
-## 📝 Environment Variables
-
-### Frontend (.env.local)
-```
-VITE_API_URL=http://localhost:3001
+### View Logs
+```bash
+docker compose logs -f        # All logs
+docker compose logs -f app    # Container logs only
 ```
 
-### Backend (.env)
+### Rebuild After Changes
+```bash
+docker compose down
+docker compose up --build
 ```
-PORT=3001
-APPLICATION_ID=0db11f239706aa1024d0d530d933b510530a88f13b50ca0e3c914c7c9aef336e
-CHAIN_ID=17ef7b84785e23ecb8d93fba80fc8e54e943b2c1c333f6a1c9245e98d957e894
-```
+
+---
+
+## 🔗 Links
+
+- **GitHub**: https://github.com/tobi-techy/KICKOFF-ARCADE
+- **Linera Docs**: https://linera.dev
+- **Buildathon**: https://app.akindo.io
+
+---
+
+## 👥 Team
+
+Built for the Linera Buildathon
+
+---
 
 ## 📄 License
 
 MIT
-
-## 👥 Credits
-
-- Pixel art sprites generated with [Pixellab](https://pixellab.ai)
-- Built for Linera Buildathon
